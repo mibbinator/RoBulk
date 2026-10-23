@@ -78,7 +78,7 @@ This is the "my whole store went off sale" fix.
 - **Many items at the same price:** select them, type the price in the box at the bottom, and click **Set price**.
 - **Raise or lower by a rule:** select items, then **More → Price rule**. Pick a change (set to, raise or lower by % or Robux), how to round (whole Robux, ending in 9, ending in 99, multiples of 5 or 10), and an optional floor and ceiling. The preview shows old → new prices before you stage anything. Raises always round up and discounts always round down, so a raise never lowers a price.
 
-Under each price, *you get R$X* shows roughly what you keep from one sale after Roblox's share.
+Under each price, *you get R$X* shows what you keep from one marketplace sale at that price, as Roblox calculates it. Roblox's share is progressive: at the minimum price you keep 30%, and the further your price is above the minimum, the more you keep, up to 70%. Change a price and the estimate updates. (Sales made inside an experience pay the base 30%.)
 
 ![Price rule dialog with a preview of the new prices](store/screenshots/3-price-rules.png)
 

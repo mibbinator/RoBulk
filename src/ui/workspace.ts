@@ -15,6 +15,7 @@ import { History, chromeStorage, memoryStorage } from "../core/history";
 // edits, sales data and history. Lives in the panel shell.
 
 export const creatorKey = (c: Creator) => `${c.type}:${c.id}`;
+const splitKey = (assetType: number, price: number) => `${assetType}:${price}`;
 
 export type RangeDays = 7 | 30 | 90;
 
@@ -54,8 +55,13 @@ export function useWorkspaceState() {
   const [notice, setNotice] = useState<string | null>(null);
   const [thumbs, setThumbs] = useState<Map<string, string>>(new Map());
   const [edits, setEdits] = useState<Map<string, Edit>>(new Map());
-  /** Percent of a marketplace sale the creator keeps, per avatar asset type. */
-  const [splits, setSplits] = useState<Map<number, number>>(new Map());
+  /**
+   * Percent of a marketplace sale the creator keeps, keyed by asset type and
+   * price. Roblox's share is progressive (30% at the price floor, rising to
+   * 70% at 6x the floor), so it has to be looked up per price.
+   */
+  const [splits, setSplits] = useState<Map<string, number>>(new Map());
+  const splitRequests = useRef(new Set<string>());
 
   const [sales, setSales] = useState<SalesState>({
     range: 30, loading: false, progress: null, error: null, truncated: false, current: null, previous: null, balance: null, loadedAt: null,
@@ -72,15 +78,26 @@ export function useWorkspaceState() {
     getThumbnails(client, list).then((found) => setThumbs((prev) => new Map([...prev, ...found])));
   };
 
-  const loadSplits = async (list: SellableItem[]) => {
-    const byType = new Map<number, SellableItem>();
-    for (const i of list) if (i.assetType != null && !byType.has(i.assetType)) byType.set(i.assetType, i);
-    const found = new Map<number, number>();
-    for (const [type, sample] of byType) {
-      const pct = await getCreatorSplitPercent(client, sample.id, sample.price ?? 5);
-      if (pct != null) found.set(type, pct);
+  /** Fetches the creator share for any asset type + price pairs not looked up yet. */
+  const ensureSplits = (wanted: { item: SellableItem; price: number | null }[]) => {
+    const todo = new Map<string, { item: SellableItem; price: number }>();
+    for (const { item, price } of wanted) {
+      if (item.kind !== "avatar" || price == null || price <= 0) continue;
+      const key = splitKey(item.assetType ?? -1, price);
+      if (!splitRequests.current.has(key) && !todo.has(key)) todo.set(key, { item, price });
     }
-    setSplits(found);
+    if (todo.size === 0) return;
+    for (const key of todo.keys()) splitRequests.current.add(key);
+    const queue = [...todo.entries()];
+    const worker = async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        const [key, { item, price }] = next;
+        const pct = await getCreatorSplitPercent(client, item.id, price);
+        if (pct != null) setSplits((prev) => new Map(prev).set(key, pct));
+        else splitRequests.current.delete(key); // allow a retry later
+      }
+    };
+    for (let i = 0; i < Math.min(4, queue.length); i++) worker();
   };
 
   useEffect(() => {
@@ -106,6 +123,7 @@ export function useWorkspaceState() {
     setUniverseId(null);
     setEdits(new Map());
     setSplits(new Map());
+    splitRequests.current.clear();
     salesAbort.current?.abort();
     transactionsRef.current = [];
     setSales((s) => ({ ...s, current: null, previous: null, balance: null, loadedAt: null, error: null, truncated: false, loading: false, progress: null }));
@@ -117,7 +135,7 @@ export function useWorkspaceState() {
     if (avatarResult.status === "fulfilled") {
       setAvatarItems(avatarResult.value);
       addThumbnails(avatarResult.value);
-      loadSplits(avatarResult.value);
+      ensureSplits(avatarResult.value.map((item) => ({ item, price: item.price })));
       history.autoSnapshot(creatorKey(c), avatarResult.value).catch(() => {});
     } else {
       setError(`Couldn't load avatar items: ${avatarResult.reason?.message ?? avatarResult.reason}`);
@@ -203,7 +221,8 @@ export function useWorkspaceState() {
   /** What the creator gets from one sale at `price`, or null if unknown. */
   const earningsPerSale = (item: SellableItem, price: number | null): number | null => {
     if (price == null) return null;
-    const pct = item.kind === "avatar" ? splits.get(item.assetType ?? -1) : EXPERIENCE_CREATOR_SHARE;
+    if (price <= 0) return 0;
+    const pct = item.kind === "avatar" ? splits.get(splitKey(item.assetType ?? -1, price)) : EXPERIENCE_CREATOR_SHARE;
     return pct == null ? null : Math.floor((price * pct) / 100);
   };
 
@@ -235,6 +254,7 @@ export function useWorkspaceState() {
     sales,
     loadSales,
     earningsPerSale,
+    ensureSplits,
   };
 }
 

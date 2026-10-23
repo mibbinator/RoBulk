@@ -51,11 +51,15 @@ function fakeRoblox() {
         nextPageCursor: null,
         data: [
           { id: 101, itemType: "Asset", assetType: 11, name: "Off-sale shirt", price: 5, priceStatus: "Off Sale", collectibleItemId: "uuid-shirt" },
-          { id: 102, itemType: "Asset", assetType: 11, name: "On-sale shirt", price: 5, collectibleItemId: "uuid-2" },
+          { id: 102, itemType: "Asset", assetType: 11, name: "On-sale shirt", price: 15, collectibleItemId: "uuid-2" },
         ],
       });
     }
-    if (url.includes("revenue-split")) return json({ RevenueSplit: { creatorSplitPercentage: 70 } });
+    if (url.includes("revenue-split")) {
+      // Progressive like Roblox's: 30% at the R$5 floor, more as the price rises, capped at 70%.
+      const price = Number(new URL(url).searchParams.get("MinimumPrice"));
+      return json({ RevenueSplit: { creatorSplitPercentage: price <= 5 ? 30 : price <= 10 ? 50 : 70 } });
+    }
     if (url.includes("develop.roblox.com/v1/user/universes")) return json({ data: [{ id: 42, name: "My Game" }], nextPageCursor: null });
     if (url.includes("/game-passes/creator")) {
       return json({
@@ -121,8 +125,9 @@ describe("Shell", () => {
 
     await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
     await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
-    // Per-sale earnings use the revenue split (70% of R$5 = R$3).
-    await waitFor(() => byText(root, ".rb-was", "you get R$3"));
+    // Per-sale earnings use the share for each item's own price.
+    await waitFor(() => byText(root, ".rb-was", "you get R$1")); // 30% of R$5
+    await waitFor(() => byText(root, ".rb-was", "you get R$10")); // 70% of R$15
 
     byText(root, ".rb-segmented button", "Off sale")!.click();
     await waitFor(() => !byText(root, ".rb-name a", "On-sale shirt"));
@@ -155,6 +160,18 @@ describe("Shell", () => {
     byText(root, ".rb-segmented button", "Activity log")!.click();
     await waitFor(() => byText(root, "td", "Off-sale shirt"));
     expect(byText(root, "td", "VIP")).toBeTruthy();
+  }, 20000);
+
+  it("looks up the creator share again when a price is changed", async () => {
+    const { root, calls } = mount();
+    await waitFor(() => byText(root, ".rb-was", "you get R$1"));
+
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="Price for Off-sale shirt"]')!;
+    input.value = "10";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await waitFor(() => byText(root, ".rb-was", "you get R$5")); // 50% of R$10
+    expect(calls.some((c) => c.url.includes("revenue-split") && c.url.includes("MinimumPrice=10"))).toBe(true);
   }, 20000);
 
   it("builds the earnings report from sale transactions", async () => {

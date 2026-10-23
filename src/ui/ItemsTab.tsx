@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { SellableItem } from "../api/types";
 import { CATEGORIES, categoryFor, type CategoryId } from "../core/categories";
 import { csvToPatches, toCsv } from "../core/csv";
@@ -60,6 +60,11 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const saving = progress?.running ?? false;
+
+  // Look up the creator share for every price on screen, including staged ones.
+  useEffect(() => {
+    ws.ensureSplits(items.map((item) => ({ item, price: effective(item, edits.get(item.key)).price })));
+  }, [items, edits]);
   const perItemSales = sales.current?.perItem;
 
   const flash = (message: string) => {
@@ -554,7 +559,7 @@ function Row({ item, edit, thumb, selected, status, problem, disabled, sales, pe
         </div>
         <div class="rb-price-notes">
           {priceChanged && <span class="rb-was">was {item.price ?? "—"}</span>}
-          {perSale != null && <span class="rb-was" title="Estimated Robux you receive per sale after Roblox's share">you get {robux(perSale)}</span>}
+          {perSale != null && <span class="rb-was" title="Robux you receive from one marketplace sale at this price. Roblox's share is smaller the further your price is above the minimum. Sales made inside an experience pay the base 30%.">you get {robux(perSale)}</span>}
         </div>
       </div>
       <div class="rb-status" title={status?.error}>
