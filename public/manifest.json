@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "RoBulk",
+  "version": "0.1.0",
+  "description": "Bulk sale and pricing tools for the Roblox Creator Dashboard. Not affiliated with Roblox Corporation.",
+  "content_scripts": [
+    {
+      "matches": ["https://create.roblox.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
