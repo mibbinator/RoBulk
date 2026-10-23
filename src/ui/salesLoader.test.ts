@@ -32,7 +32,7 @@ function fakeRoblox() {
   const fetchImpl = vi.fn(async (url: string) => {
     if (url.includes("/currency")) return json({ robux: 50 });
     const cursor = new URL(url).searchParams.get("cursor") ?? "";
-    requested.push(cursor);
+    requested.push((url.includes("/groups/") ? "group " : "") + cursor);
     await new Promise<void>((r) => waiting.push(r));
     return json(PAGES[cursor]);
   });
@@ -134,5 +134,25 @@ describe("SalesLoader", () => {
     expect(again.state.entry!.sales).toHaveLength(2);
     await release();
     await release();
+  });
+  it("lets the selected group's load finish before a background load asks Roblox for anything", async () => {
+    const { fetchImpl, requested, release, cache } = setup();
+    const main = salesLoader(me, createClient(fetchImpl), cache, () => true);
+    const group: Creator = { type: "Group", id: 9, name: "Other group", access: me.access };
+    const other = salesLoader(group, createClient(fetchImpl), cache, () => true);
+
+    main.load(null);
+    other.load(null, { background: true });
+    await release();
+    expect(other.state.progress).toMatch(/Waiting for me to finish/);
+    await release();
+    await release();
+    expect(main.state.loading).toBe(false);
+    // Only now does the other group start.
+    expect(requested).toEqual(["", "p2", "p3", "group "]);
+    await release();
+    await release();
+    await release();
+    expect(other.state.entry!.sales).toHaveLength(5);
   });
 });

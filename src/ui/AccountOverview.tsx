@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { cachedCreators } from "../api/account";
 import { createClient } from "../api/http";
 import type { Creator } from "../api/types";
@@ -9,12 +9,14 @@ import { DEFAULT_SETTINGS, readSettings } from "../core/settings";
 import { robux } from "./charts";
 import { Segmented, downloadText } from "./components";
 import { salesLoader, type SalesLoader } from "./salesLoader";
-import { creatorKey, makeStorage, rangeLabel, type ReportRange } from "./workspace";
+import { creatorKey, initialCreator, makeStorage, rangeLabel, type ReportRange } from "./workspace";
 
-// Every creator the user can see the earnings of, side by side. Each one's
-// sales come from the same loader the Earnings report uses, loaded one
-// creator at a time so Roblox isn't asked for everything at once, and kept
-// for the page visit like the report's.
+// Every creator the user can see the earnings of, side by side. Nothing is
+// loaded until "Run report" is pressed. The group the dashboard has selected
+// goes first, as a normal load; the others follow one at a time as background
+// loads, which wait whenever the selected group (or anything the RoBulk panel
+// asks for) is loading, so they never page through Roblox at the same time.
+// Each one's sales are kept for the page visit like the Earnings report's.
 
 const DAY = 86_400_000;
 
@@ -27,12 +29,13 @@ interface Row {
   complete: boolean;
 }
 
+const wantFor = (range: ReportRange) => (range === "all" ? null : new Date(Date.now() - range * 2 * DAY));
+
 function summaries(loader: SalesLoader, range: ReportRange) {
   const entry = loader.state.entry;
   if (!entry) return { current: null, previous: null, complete: false };
   const now = new Date();
-  const want = range === "all" ? null : new Date(now.getTime() - range * 2 * DAY);
-  const complete = cacheCovers(entry, want);
+  const complete = cacheCovers(entry, wantFor(range));
   if (range === "all") {
     const first = entry.coveredFrom ?? entry.sales.at(-1)?.created ?? now.toISOString();
     return { current: summarize(entry.sales, new Date(first), now), previous: null, complete };
@@ -45,26 +48,24 @@ function summaries(loader: SalesLoader, range: ReportRange) {
 
 const csvCell = (v: string | number) => (typeof v === "number" ? String(v) : `"${v.replace(/"/g, '""')}"`);
 
+type RunState = "idle" | "running" | "done" | "stopped";
+
 export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => void; onOpenCreator: (creator: Creator) => void }) {
   const client = useMemo(() => createClient(), []);
   const storage = useMemo(makeStorage, []);
-  const [creators, setCreators] = useState<Creator[] | null>(null);
+  const [loaders, setLoaders] = useState<SalesLoader[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<ReportRange>(30);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const remember = settings.rememberSales;
-  const cache = useMemo(() => new SalesCache(storage, { maxSales: () => settings.maxStoredSales, overflow: extensionOverflowStore() }), [storage, settings]);
+  /** The range the last run loaded; the table shows that until the next run. */
+  const [ranFor, setRanFor] = useState<ReportRange | null>(null);
+  const [runState, setRunState] = useState<RunState>("idle");
+  const [current, setCurrent] = useState<string | null>(null);
+  /** The group the dashboard has selected; its load is RoBulk's own, not the report's. */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const cancelled = useRef(false);
   /** Bumped when any loader changes, a few times a second at most. */
   const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    readSettings(storage).then(setSettings);
-    cachedCreators(client, storage)
-      .then((list) => setCreators(list.filter((c) => c.access.earnings)))
-      .catch((e) => setError(`Couldn't load your groups: ${(e as Error).message}`));
-  }, []);
-
-  const loaders = useMemo(() => (creators ?? []).map((c) => salesLoader(c, client, cache, () => remember)), [creators]);
+  const running = runState === "running";
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -81,53 +82,98 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
     };
   }, [loaders]);
 
-  // One creator at a time; anything already loaded far enough back is reused without asking Roblox.
+  // Leaving the page part-way through stops the report; ask first.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      for (const loader of loaders) {
-        if (cancelled) return;
-        loader.load(range === "all" ? null : new Date(Date.now() - range * 2 * DAY));
-        await loader.whenDone();
-      }
-    })();
-    return () => {
-      cancelled = true;
+    if (!running) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
     };
-  }, [loaders, range]);
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [running]);
+
+  const stop = () => {
+    cancelled.current = true;
+    // The selected group's load belongs to RoBulk itself; only stop the background ones.
+    for (const l of loaders) if (creatorKey(l.creator) !== selectedKey) l.stop();
+    setRunState("stopped");
+    setCurrent(null);
+  };
+
+  const close = () => {
+    if (running && !confirm("The report is still running. Stop it and close?")) return;
+    if (running) stop();
+    onClose();
+  };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  });
 
-  const rows: Row[] = useMemo(() => loaders.map((loader) => ({ creator: loader.creator, loader, ...summaries(loader, range) })), [loaders, range, tick]);
+  const run = async () => {
+    cancelled.current = false;
+    setError(null);
+    setRunState("running");
+    setRanFor(range);
+    try {
+      const settings = await readSettings(storage).catch(() => DEFAULT_SETTINGS);
+      const cache = new SalesCache(storage, { maxSales: () => settings.maxStoredSales, overflow: extensionOverflowStore() });
+      setCurrent("Finding your groups…");
+      const all = await cachedCreators(client, storage);
+      const visible = all.filter((c) => c.access.earnings);
+      // The group the dashboard has selected first, then the rest in their usual order.
+      const selected = initialCreator(all);
+      setSelectedKey(creatorKey(selected));
+      const ordered = [...visible.filter((c) => creatorKey(c) === creatorKey(selected)), ...visible.filter((c) => creatorKey(c) !== creatorKey(selected))];
+      const list = ordered.map((c) => salesLoader(c, client, cache, () => settings.rememberSales));
+      setLoaders(list);
+
+      const want = wantFor(range);
+      for (const loader of list) {
+        if (cancelled.current) return;
+        setCurrent(loader.creator.name);
+        // Already loaded far enough back on this visit: nothing to ask Roblox for.
+        loader.load(want, { background: creatorKey(loader.creator) !== creatorKey(selected) });
+        await loader.whenDone();
+      }
+      if (!cancelled.current) setRunState("done");
+    } catch (e) {
+      setError(`Couldn't run the report: ${(e as Error).message}`);
+      setRunState("stopped");
+    }
+    setCurrent(null);
+  };
+
+  const shown = ranFor ?? range;
+  const rows: Row[] = useMemo(() => loaders.map((loader) => ({ creator: loader.creator, loader, ...summaries(loader, shown) })), [loaders, shown, tick]);
   const total = rows.reduce((sum, r) => sum + (r.current?.totalRobux ?? 0), 0);
   const totalPrev = rows.reduce((sum, r) => sum + (r.previous?.totalRobux ?? 0), 0);
   const totalSales = rows.reduce((sum, r) => sum + (r.current?.sales ?? 0), 0);
   const totalPending = rows.reduce((sum, r) => sum + (r.current?.pendingRobux ?? 0), 0);
   const totalBalance = rows.reduce((sum, r) => sum + (r.loader.state.balance ?? 0), 0);
   const largest = Math.max(1, ...rows.map((r) => r.current?.totalRobux ?? 0));
-  const loadingAny = rows.some((r) => r.loader.state.loading || !r.complete);
+  const doneCount = rows.filter((r) => r.complete && !r.loader.state.loading).length;
 
   const exportCsv = () => {
     const lines = [["creator", "earned", "sales", "pending", "balance"].join(",")];
     for (const r of rows) {
       lines.push([csvCell(r.creator.name), r.current?.totalRobux ?? 0, r.current?.sales ?? 0, r.current?.pendingRobux ?? 0, r.loader.state.balance ?? ""].map(String).join(","));
     }
-    downloadText(`account-overview-${range === "all" ? "all-time" : `${range}d`}.csv`, lines.join("\r\n") + "\r\n", "text/csv");
+    downloadText(`account-overview-${shown === "all" ? "all-time" : `${shown}d`}.csv`, lines.join("\r\n") + "\r\n", "text/csv");
   };
 
   return (
-    <div class="rb-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div class="rb-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div class="rb-panel" role="dialog" aria-label="Account overview">
         <header class="rb-header">
           <div class="rb-title">
             <span class="rb-brand">Account Overview</span>
           </div>
           <div class="rb-header-controls">
-            <button class="rb-icon-btn" title="Close (Esc)" onClick={onClose}>
+            <button class="rb-icon-btn" title="Close (Esc)" onClick={close}>
               ✕
             </button>
           </div>
@@ -137,7 +183,7 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
           <Segmented<string>
             label="Date range"
             value={String(range)}
-            onChange={(v) => setRange(v === "all" ? "all" : (Number(v) as ReportRange))}
+            onChange={(v) => !running && setRange(v === "all" ? "all" : (Number(v) as ReportRange))}
             options={[
               ["7", "Last 7 days"],
               ["30", "Last 30 days"],
@@ -146,28 +192,65 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
             ]}
           />
           <div class="rb-spacer" />
-          {loadingAny && creators && creators.length > 0 && (
-            <span class="rb-muted rb-small rb-updating">
-              <span class="rb-spinner" /> Loading one at a time…
-            </span>
+          {running ? (
+            <button class="rb-btn rb-btn-ghost" onClick={stop}>
+              Stop
+            </button>
+          ) : (
+            <>
+              <button class="rb-btn rb-btn-ghost" disabled={rows.length === 0} onClick={exportCsv}>
+                Export (.csv)
+              </button>
+              <button class="rb-btn rb-btn-primary" onClick={run}>
+                {runState === "idle" ? "Run report" : ranFor === range ? "Run again" : "Run report"}
+              </button>
+            </>
           )}
-          <button class="rb-btn rb-btn-ghost" disabled={rows.length === 0} onClick={exportCsv}>
-            Export (.csv)
-          </button>
         </div>
 
         <main class="rb-body rb-report">
           {error && <div class="rb-empty rb-error">{error}</div>}
-          {!error && !creators && <div class="rb-empty">Loading your groups…</div>}
-          {creators && creators.length === 0 && <div class="rb-empty">None of your groups let your role see their revenue.</div>}
+
+          {runState === "idle" && !error && (
+            <div class="rb-overview-intro">
+              <h3>Earnings for your account and all your groups, side by side</h3>
+              <p>
+                Pick a period and press <strong>Run report</strong>. RoBulk loads your selected group first, then the rest one at a time, so it can take a few minutes if
+                you have lots of groups or a long period. Anything already loaded on this visit is reused straight away.
+              </p>
+            </div>
+          )}
+
+          {running && (
+            <div class="rb-banner rb-banner-inline rb-overview-running" role="status">
+              <span class="rb-spinner" />
+              <span>
+                <strong>Keep this tab open and stay on the Creator Dashboard until the report finishes.</strong> Closing the tab or going to another site stops it. What's
+                loaded is kept, so running it again carries on.
+                {current && loaders.length > 0 && (
+                  <>
+                    {" "}
+                    Now loading {current} ({Math.min(doneCount + 1, loaders.length)} of {loaders.length}).
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+          {runState === "stopped" && !error && <div class="rb-banner rb-banner-inline">Stopped. Press Run report to carry on from where it got to.</div>}
+          {!running && ranFor !== null && ranFor !== range && (
+            <div class="rb-banner rb-banner-inline">
+              Showing the {rangeLabel(ranFor)}. Press <strong>Run report</strong> to load the {rangeLabel(range)}.
+            </div>
+          )}
+          {runState !== "idle" && loaders.length === 0 && !running && !error && <div class="rb-empty">None of your groups let your role see their revenue.</div>}
 
           {rows.length > 0 && (
             <>
               <div class="rb-kpis">
                 <div class="rb-stat">
-                  <span class="rb-stat-label">Earned, {rangeLabel(range)}</span>
+                  <span class="rb-stat-label">Earned, {rangeLabel(shown)}</span>
                   <strong class="rb-stat-value">{robux(total)}</strong>
-                  {range !== "all" && totalPrev > 0 && (
+                  {shown !== "all" && totalPrev > 0 && (
                     <span class={`rb-stat-delta ${total >= totalPrev ? "up" : "down"}`}>
                       {total >= totalPrev ? "▲" : "▼"} {Math.abs(Math.round((change(total, totalPrev) ?? 0) * 100))}% vs previous period
                     </span>
@@ -199,7 +282,7 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                     <thead>
                       <tr>
                         <th>Account or group</th>
-                        <th>Earned, {rangeLabel(range)}</th>
+                        <th>Earned, {rangeLabel(shown)}</th>
                         <th class="num">Change</th>
                         <th class="num">Sales</th>
                         <th class="num">Pending</th>
@@ -216,15 +299,18 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                           <tr key={creatorKey(r.creator)}>
                             <td>
                               <strong>{r.creator.type === "User" ? `${r.creator.name} (you)` : r.creator.name}</strong>
+                              {creatorKey(r.creator) === selectedKey && <span class="rb-chip rb-chip-quiet">Selected</span>}
                               {loading && <div class="rb-small rb-muted">{progress ?? "Loading…"}</div>}
                               {!loading && !r.complete && r.current && <div class="rb-small rb-muted">Not loaded all the way back yet</div>}
-                              {!loading && !r.current && <div class="rb-small rb-muted">Waiting…</div>}
+                              {!loading && !r.current && <div class="rb-small rb-muted">{running ? "Waiting its turn…" : "Not loaded"}</div>}
                             </td>
-                            <td class="rb-overview-bar-cell">
-                              <div class="rb-overview-bar" title={robux(earned)}>
-                                <div style={{ width: `${(earned / largest) * 100}%` }} />
+                            <td>
+                              <div class="rb-overview-bar-cell">
+                                <div class="rb-overview-bar" title={robux(earned)}>
+                                  <div style={{ width: `${(earned / largest) * 100}%` }} />
+                                </div>
+                                <span class="rb-overview-value">{r.current ? robux(earned) : "—"}</span>
                               </div>
-                              <span class="rb-overview-value">{r.current ? robux(earned) : "—"}</span>
                             </td>
                             <td class="num">
                               {delta === undefined ? "—" : delta == null ? "New" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(delta * 100))}%`}
@@ -233,7 +319,7 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                             <td class="num">{r.current ? robux(r.current.pendingRobux) : "—"}</td>
                             <td class="num">{r.loader.state.balance == null ? "—" : robux(r.loader.state.balance)}</td>
                             <td class="num">
-                              <button class="rb-link-btn" onClick={() => onOpenCreator(r.creator)}>
+                              <button class="rb-link-btn" disabled={running} onClick={() => onOpenCreator(r.creator)}>
                                 Open report
                               </button>
                             </td>

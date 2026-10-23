@@ -193,7 +193,9 @@ Pay them on Roblox's payouts page (**Open Roblox payouts**), then click **Mark a
 
 ### 14. See all your groups at once (Account Overview)
 
-Click **Account Overview** in the dashboard's sidebar (or the button at the top of RoBulk). It loads each account and group's sales one at a time and shows earnings, change from the previous period, sales, pending Robux and balance side by side, with totals. **Open report** jumps to that group's Earnings report.
+Click **Account Overview** in the dashboard's sidebar (or the button at the top of RoBulk), pick a period and press **Run report**. Nothing loads until you do. RoBulk loads the group you have selected on the dashboard first, then every other account and group one at a time, and shows earnings, change from the previous period, sales, pending Robux and balance side by side, with totals. **Open report** jumps to that group's Earnings report.
+
+Keep the tab open and stay on the Creator Dashboard while it runs; closing the tab or going to another site stops it (what's loaded is kept, so running it again carries on). The other groups always wait while your selected group, or anything you open in RoBulk, is loading, so they never slow each other down.
 
 ### 15. Get warned when items go off sale
 

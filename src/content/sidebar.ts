@@ -18,9 +18,10 @@ export const OVERVIEW_ID = "robulk-sidebar-overview";
 const STYLE_ID = "robulk-sidebar-style";
 
 const STYLE = `
-[data-robulk-entry] { container-type: inline-size; position: relative; }
+[data-robulk-entry] { container-type: inline-size; position: relative; overflow: visible !important; }
 [data-robulk-entry] [data-robulk-progress] {
   position: absolute;
+  z-index: 1;
   left: 10px;
   right: 10px;
   bottom: 0;
@@ -47,7 +48,22 @@ const STYLE = `
 @media (prefers-reduced-motion: reduce) {
   [data-robulk-entry] [data-robulk-progress].is-indeterminate > div { width: 100%; opacity: 0.5; animation: none; }
 }
+/*
+ * Our names always show. The copied classes can say "hidden" (the sidebar
+ * fades labels out while it starts up and when it's collapsed), so override
+ * that on the label and the span around it.
+ */
+[data-robulk-entry] [data-robulk-label],
+[data-robulk-entry] [data-robulk-button] > :has([data-robulk-label]) {
+  opacity: 1 !important;
+  max-width: none !important;
+  overflow: visible !important;
+  visibility: visible !important;
+}
 [data-robulk-entry] [data-robulk-label] { font-weight: 700 !important; }
+@container (min-width: 101px) {
+  [data-robulk-entry] [data-robulk-label] { padding-left: 20px !important; }
+}
 [data-robulk-entry] [data-robulk-short] { display: none; }
 [data-robulk-entry] [data-robulk-badge] {
   margin-left: auto !important;

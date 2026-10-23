@@ -102,6 +102,7 @@ export async function listSales(
     fromCursor = "",
     onProgress,
     onPage,
+    beforePage,
     signal,
   }: {
     maxPages?: number;
@@ -109,6 +110,8 @@ export async function listSales(
     onProgress?: (p: TransactionProgress) => void;
     /** Everything so far after each page that isn't the last, so it can be saved as it arrives. */
     onPage?: (soFar: TransactionResult) => void;
+    /** Awaited before each page, so a lower-priority load can wait its turn. */
+    beforePage?: () => Promise<void> | void;
     signal?: AbortSignal;
   } = {},
 ): Promise<TransactionResult> {
@@ -124,6 +127,10 @@ export async function listSales(
   const onRateLimited = () => (pace = pace ? Math.min(MAX_PACE_MS, pace * 2) : RATE_LIMITED_PACE_MS);
   for (let page = 0; page < maxPages; page++) {
     if (signal?.aborted) break;
+    if (beforePage) {
+      await beforePage();
+      if (signal?.aborted) break;
+    }
     const params = new URLSearchParams({ transactionType: "Sale", limit: "100" });
     if (cursor) params.set("cursor", cursor);
     let res: TransactionPage;

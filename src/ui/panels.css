@@ -928,3 +928,25 @@ a.rb-btn {
 .rb-overview {
   margin-top: 12px;
 }
+.rb-overview-intro {
+  max-width: 640px;
+  margin: 24px auto;
+  text-align: center;
+}
+.rb-overview-intro h3 {
+  margin: 0 0 8px;
+}
+.rb-overview-intro p {
+  margin: 0;
+  color: var(--rb-muted);
+}
+.rb-overview-running {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.rb-chip-quiet {
+  margin-left: 8px;
+  vertical-align: middle;
+}

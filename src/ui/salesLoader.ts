@@ -11,6 +11,11 @@ import { SalesCache, cacheCovers, mergeFetched, mergeOlder, planFetch, type Sale
 // alone instead of starting over. Every page of sales is kept as soon as it
 // arrives and saved to the browser right behind it, so stopping, closing the
 // tab or switching away loses at most the page that was on its way.
+//
+// Loads are either main loads (the selected group, anything the RoBulk panel
+// asks for) or background loads (the Account Overview's other groups). A
+// background load waits between pages whenever a main load is running
+// anywhere on the page, so the two never page through Roblox at once.
 
 export interface LoaderState {
   /** Everything loaded so far, newest first. */
@@ -29,6 +34,8 @@ interface Running {
   /** How far back it's going; null = everything. */
   want: Date | null;
   controller: AbortController;
+  /** Gives way to main loads; see the top of this file. */
+  background: boolean;
 }
 
 const covers = (outer: Date | null, inner: Date | null) => outer === null || (inner !== null && outer <= inner);
@@ -95,13 +102,20 @@ export class SalesLoader {
    * nothing if they already are, or if the load that's running will get
    * there; `force` (Refresh, Keep loading) fetches anyway.
    */
-  load(want: Date | null, { force = false }: { force?: boolean } = {}) {
+  load(want: Date | null, { force = false, background = false }: { force?: boolean; background?: boolean } = {}) {
     const { entry, loadedAt } = this.state;
-    if (!force && this.running && covers(this.running.want, want)) return;
+    if (!force && this.running && covers(this.running.want, want)) {
+      // Asked for as a main load now: stop giving way.
+      if (!background && this.running.background) {
+        this.running.background = false;
+        this.set({});
+      }
+      return;
+    }
     if (!force && !this.running && loadedAt && entry && cacheCovers(entry, want)) return;
     this.running?.controller.abort();
     const controller = new AbortController();
-    this.running = { want, controller };
+    this.running = { want, controller, background };
     void this.run(want, controller).finally(() => {
       if (this.running?.controller === controller) this.running = null;
     });
@@ -117,6 +131,30 @@ export class SalesLoader {
         resolve();
       });
     });
+  }
+
+  /** A main load is running (not one giving way to others). */
+  get mainLoading(): boolean {
+    return !!this.running && !this.running.background && this.state.loading;
+  }
+
+  /** For a background load: waits while a main load runs anywhere on the page. */
+  private async waitTurn(controller: AbortController) {
+    const busy = () => this.running?.controller === controller && this.running.background && [...loaders.values()].some((l) => l !== this && l.mainLoading);
+    if (!busy()) return;
+    const progress = this.state.progress;
+    const main = [...loaders.values()].find((l) => l !== this && l.mainLoading);
+    this.set({ progress: `Waiting for ${main?.creator.name ?? "another group"} to finish loading first…` });
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (busy() && !controller.signal.aborted) return;
+        off();
+        resolve();
+      };
+      const off = onPageLoadingChange(check);
+      controller.signal.addEventListener("abort", check);
+    });
+    this.set({ progress });
   }
 
   /** Stops loading and keeps what's loaded. */
@@ -149,6 +187,7 @@ export class SalesLoader {
           fromCursor,
           signal,
           onPage,
+          beforePage: () => this.waitTurn(controller),
           onProgress: (p) =>
             this.set({
               progress:
@@ -226,12 +265,11 @@ export interface PageLoading {
   label: string;
 }
 
-/** The sales load running on the page right now, if any. */
+/** The sales load running on the page right now, if any (a main load before a background one). */
 export function pageLoading(): PageLoading | null {
-  for (const l of loaders.values()) {
-    if (l.state.loading) return { fraction: l.state.fraction, label: l.state.progress ?? "Loading sales…" };
-  }
-  return null;
+  const all = [...loaders.values()].filter((l) => l.state.loading);
+  const l = all.find((x) => x.mainLoading) ?? all[0];
+  return l ? { fraction: l.state.fraction, label: l.state.progress ?? "Loading sales…" } : null;
 }
 
 /** Calls `listener` whenever any loader on the page changes. */
