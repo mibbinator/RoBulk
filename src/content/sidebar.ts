@@ -5,8 +5,38 @@
 //
 // The sidebar is React and re-renders whenever its mode changes, so a
 // MutationObserver re-copies the entry when All tools changes or ours is lost.
+//
+// One difference: the dashboard hides every label when the sidebar is
+// collapsed to icons, but RoBulk's name always shows, as a caption under the
+// logo when there's no room beside it.
 
 export const ENTRY_ID = "robulk-sidebar-entry";
+const STYLE_ID = "robulk-sidebar-style";
+
+const STYLE = `
+#${ENTRY_ID} { container-type: inline-size; }
+#${ENTRY_ID} [data-robulk-label] { font-weight: 700 !important; }
+@container (max-width: 100px) {
+  #${ENTRY_ID} [data-robulk-button] {
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 2px;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 40px !important;
+    padding: 4px 0 !important;
+  }
+  #${ENTRY_ID} [data-robulk-button] > * { margin: 0 !important; padding: 0 !important; }
+  #${ENTRY_ID} [data-robulk-label] {
+    opacity: 1 !important;
+    max-width: none !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+    line-height: 14px !important;
+    white-space: nowrap !important;
+  }
+}`;
 
 const ALL_TOOLS_ICON = '[class*="icon-regular-three-dots-horizontal"]';
 /** The Creations entry, which only the sidebar's own entries sit next to. */
@@ -14,10 +44,10 @@ const CREATIONS_ENTRY = ':scope > :is(a, button) :is([class*="icon-regular-folde
 
 /** The wrapper around the All tools button, if the sidebar is showing. */
 export function findAllToolsEntry(doc: Document): HTMLElement | null {
-  const byIcon = [...doc.querySelectorAll(ALL_TOOLS_ICON)].map((el) => el.closest("button"));
-  // Entries are wrapper divs side by side, each holding one button or link.
+  const byIcon = [...doc.querySelectorAll(ALL_TOOLS_ICON)].map((el) => el.closest("a, button"));
   // English fallback, in case the icon is ever renamed.
-  const byLabel = [...doc.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "All tools");
+  const byLabel = [...doc.querySelectorAll("a, button")].filter((b) => b.textContent?.trim() === "All tools");
+  // Entries are wrapper divs side by side, each holding one button or link.
   for (const button of [...byIcon, ...byLabel]) {
     const wrapper = button?.parentElement;
     const siblings = wrapper?.parentElement ? [...wrapper.parentElement.children] : [];
@@ -40,8 +70,10 @@ function buildEntry(allTools: HTMLElement, logoUrl: string, onOpen: () => void):
   entry.id = ENTRY_ID;
   entry.dataset.robulkFrom = signature(allTools);
 
-  const button = entry.querySelector("button")!;
-  button.type = "button";
+  const button = entry.querySelector<HTMLElement>("a, button")!;
+  button.removeAttribute("href");
+  if (button instanceof HTMLButtonElement) button.type = "button";
+  button.dataset.robulkButton = "";
   button.title = "RoBulk";
   button.setAttribute("aria-label", "Open RoBulk");
   button.addEventListener("click", (e) => {
@@ -61,12 +93,21 @@ function buildEntry(allTools: HTMLElement, logoUrl: string, onOpen: () => void):
     iconSlot.replaceChildren(logo);
   }
   const label = [...button.querySelectorAll("*")].find((el) => el.children.length === 0 && el.textContent?.trim() && el !== iconSlot);
-  if (label) label.textContent = "RoBulk";
+  if (label instanceof HTMLElement) {
+    label.textContent = "RoBulk";
+    label.dataset.robulkLabel = "";
+  }
   return entry;
 }
 
 /** Adds the entry if it's missing or stale. True when it's in the sidebar. */
 export function syncSidebarEntry(doc: Document, logoUrl: string, onOpen: () => void): boolean {
+  if (!doc.getElementById(STYLE_ID)) {
+    const style = doc.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = STYLE;
+    doc.head.append(style);
+  }
   const allTools = findAllToolsEntry(doc);
   const existing = doc.getElementById(ENTRY_ID);
   if (!allTools) {
@@ -98,5 +139,6 @@ export function watchSidebar(logoUrl: string, onOpen: () => void, onChange: (sho
   return () => {
     observer.disconnect();
     document.getElementById(ENTRY_ID)?.remove();
+    document.getElementById(STYLE_ID)?.remove();
   };
 }

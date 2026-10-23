@@ -78,4 +78,27 @@ describe("sidebar entry", () => {
     document.body.innerHTML = "<main>Loading…</main>";
     expect(syncSidebarEntry(document, "logo", () => {})).toBe(false);
   });
+
+  it("always shows its name, even when the dashboard hides the other labels", () => {
+    sidebar();
+    syncSidebarEntry(document, "logo", () => {});
+    const label = document.querySelector<HTMLElement>(`#${ENTRY_ID} [data-robulk-label]`)!;
+    expect(label.textContent).toBe("RoBulk");
+    // A container query in the injected style turns it into a caption when the sidebar is narrow.
+    expect(document.getElementById("robulk-sidebar-style")!.textContent).toContain("@container");
+    expect(document.querySelectorAll("#robulk-sidebar-style")).toHaveLength(1);
+    syncSidebarEntry(document, "logo", () => {});
+    expect(document.querySelectorAll("#robulk-sidebar-style")).toHaveLength(1);
+  });
+
+  it("works when All tools is a link rather than a button", () => {
+    document.body.innerHTML = `<nav>
+      <div><a href="/creations"><span class="MuiButton-startIcon"><span class="icon-regular-folder"></span></span><span><span>Creations</span></span></a></div>
+      <div><a href="/tools"><span class="MuiButton-startIcon"><span class="icon-regular-three-dots-horizontal"></span></span><span><span>All tools</span></span></a></div>
+    </nav>`;
+    expect(syncSidebarEntry(document, "logo", () => {})).toBe(true);
+    const link = document.querySelector(`#${ENTRY_ID} a`)!;
+    expect(link.hasAttribute("href")).toBe(false); // clicking opens RoBulk instead of navigating
+    expect(link.textContent?.trim()).toBe("RoBulk");
+  });
 });
