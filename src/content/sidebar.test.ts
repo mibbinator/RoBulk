@@ -126,4 +126,24 @@ describe("sidebar entry", () => {
     expect(bar()).toBeNull();
     expect(document.querySelector(`#${ENTRY_ID} button`)!.getAttribute("title")).toBe("RoBulk");
   });
+  it("names itself even when the dashboard's labels are still empty on first load", () => {
+    // Before the dashboard's translations arrive, "All tools" has no text yet.
+    document.body.innerHTML = `<nav>
+      ${entry("icon-regular-folder", "Creations")}
+      ${entry("icon-regular-three-dots-horizontal", "")}
+    </nav>`;
+    syncSidebarEntry(document, "logo", () => {});
+    const label = document.querySelector<HTMLElement>(`#${ENTRY_ID} [data-robulk-label]`)!;
+    expect(label.textContent).toBe("RoBulk");
+    expect(label.classList.contains("MuiTypography-root")).toBe(true); // keeps the dashboard's label styling
+  });
+
+  it("adds its own label if the copied entry has none", () => {
+    document.body.innerHTML = `<nav>
+      <div><a href="/creations"><span class="MuiButton-startIcon"><span class="icon-regular-folder"></span></span><span>Creations</span></a></div>
+      <div><button><span class="MuiButton-startIcon"><span class="icon-regular-three-dots-horizontal"></span></span></button></div>
+    </nav>`;
+    syncSidebarEntry(document, "logo", () => {});
+    expect(document.querySelector(`#${ENTRY_ID} [data-robulk-label]`)!.textContent).toBe("RoBulk");
+  });
 });

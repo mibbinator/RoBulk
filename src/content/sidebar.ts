@@ -173,19 +173,28 @@ function buildEntry(allTools: HTMLElement, spec: SidebarEntry): HTMLElement {
     icon.style.cssText = "display:block;width:24px;height:24px;border-radius:6px";
     iconSlot.replaceChildren(icon);
   }
-  const label = [...button.querySelectorAll("*")].find((el) => el.children.length === 0 && el.textContent?.trim() && el !== iconSlot);
-  if (label instanceof HTMLElement) {
-    label.dataset.robulkLabel = "";
-    if (spec.shortLabel) {
-      const full = document.createElement("span");
-      full.dataset.robulkFull = "";
-      full.textContent = spec.label;
-      const short = document.createElement("span");
-      short.dataset.robulkShort = "";
-      short.textContent = spec.shortLabel;
-      label.replaceChildren(full, short);
-    } else label.textContent = spec.label;
+  // Found by where it sits, not by its text: when the dashboard first loads, its
+  // labels are empty until its translations arrive, and filling them in later
+  // only changes text, which wouldn't make us copy the entry again.
+  const outsideIcon = (el: Element) => !iconSlot?.contains(el);
+  let label: HTMLElement | undefined =
+    [...button.querySelectorAll<HTMLElement>('[class*="MuiTypography"]')].find(outsideIcon) ??
+    [...button.querySelectorAll<HTMLElement>("*")].filter((el) => el.children.length === 0 && outsideIcon(el) && !(el instanceof HTMLImageElement)).at(-1);
+  if (!label) {
+    label = document.createElement("span");
+    label.style.paddingLeft = "20px";
+    button.append(label);
   }
+  label.dataset.robulkLabel = "";
+  if (spec.shortLabel) {
+    const full = document.createElement("span");
+    full.dataset.robulkFull = "";
+    full.textContent = spec.label;
+    const short = document.createElement("span");
+    short.dataset.robulkShort = "";
+    short.textContent = spec.shortLabel;
+    label.replaceChildren(full, short);
+  } else label.textContent = spec.label;
   if (spec.id === ENTRY_ID) {
     showProgress(entry);
     showBadge(entry);
