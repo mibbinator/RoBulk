@@ -2,6 +2,7 @@
 import { render } from "preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Shell } from "./Shell";
+import { forgetPageSales } from "./workspace";
 
 // End-to-end checks of the panel against simulated Roblox responses.
 
@@ -125,6 +126,7 @@ function mount() {
 }
 
 afterEach(() => {
+  forgetPageSales();
   localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -212,6 +214,29 @@ describe("Shell", () => {
     byText(root, ".rb-segmented button", "Last 30 days")!.click();
     await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
     expect(transactionCalls(calls)).toBe(fetches + 1);
+  }, 20000);
+
+  it("keeps sales for the whole page visit: reopening RoBulk doesn't ask Roblox again", async () => {
+    const { root, calls } = mount();
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+    byText(root, ".rb-tabs button", "Earnings report")!.click();
+    await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    const fetches = transactionCalls(calls);
+
+    // Close RoBulk and open it again.
+    render(null, root);
+    render(<Shell onClose={() => {}} />, root);
+
+    // The Items tab shows per-item sales straight away, without clicking "Load sales".
+    await waitFor(() => byText(root, ".rb-meta-btn", /2 sold/));
+    byText(root, ".rb-tabs button", "Earnings report")!.click();
+    const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    expect(transactionCalls(calls)).toBe(fetches);
+
+    // Refresh is the way to fetch again.
+    byText(root, ".rb-toolbar button", "Refresh")!.click();
+    await waitFor(() => transactionCalls(calls) === fetches + 1);
   }, 20000);
 
   it("looks up the creator share again when a price is changed", async () => {

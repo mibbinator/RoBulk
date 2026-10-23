@@ -83,7 +83,7 @@ export function EarningsTab() {
             >
               Export report (.csv)
             </button>
-            <button class="rb-btn rb-btn-ghost" onClick={() => loadSales(sales.range)}>
+            <button class="rb-btn rb-btn-ghost" onClick={() => loadSales(sales.range, undefined, { force: true })} title="Fetch the latest sales from Roblox">
               Refresh
             </button>
           </>
@@ -96,7 +96,7 @@ export function EarningsTab() {
         {sales.truncated && !sales.loading && sales.since && (
           <div class="rb-banner rb-banner-inline">
             Showing sales from {longDate(sales.since)} on; loading stopped before {allTime ? "your first sale" : "the start of this range"}.{" "}
-            <button class="rb-link-btn" onClick={() => loadSales(sales.range)}>
+            <button class="rb-link-btn" onClick={() => loadSales(sales.range, undefined, { force: true })}>
               Keep loading
             </button>
           </div>

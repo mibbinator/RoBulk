@@ -10,7 +10,7 @@ import type { Creator, Experience, SellableItem } from "../api/types";
 import { summarize, type EarningsSummary, type SaleTransaction } from "../core/earnings";
 import type { Edit } from "../core/edits";
 import { History, chromeStorage, memoryStorage } from "../core/history";
-import { SalesCache, cacheCovers, mergeFetched, planFetch } from "../core/salesCache";
+import { SalesCache, cacheCovers, mergeFetched, planFetch, type SalesCacheEntry } from "../core/salesCache";
 import { dashboardGroupId } from "./dashboardGroup";
 
 // Everything the tabs share: who we're working on, their items, unsaved
@@ -20,10 +20,29 @@ export const creatorKey = (c: Creator) => `${c.type}:${c.id}`;
 const splitKey = (assetType: number, price: number) => `${assetType}:${price}`;
 
 const DAY = 86_400_000;
-/** Sales loaded this recently are reused as-is when switching report ranges. */
-const FRESH_MS = 5 * 60_000;
 
 export type ReportRange = 7 | 30 | 90 | "all";
+
+/**
+ * Sales loaded during this page visit, per creator. They live as long as the
+ * page does, so closing and reopening RoBulk, switching creators or moving
+ * around the dashboard never asks Roblox again; Refresh (or reloading the
+ * page) does.
+ */
+interface PageSales {
+  sales: SalesCacheEntry;
+  balance: number | null;
+  loadedAt: Date;
+}
+const pageSales = new Map<string, PageSales>();
+/** The report range last used on this page, so reopening RoBulk keeps it. */
+let pageRange: ReportRange = 30;
+
+/** Forgets this page visit's sales (for tests). */
+export function forgetPageSales() {
+  pageSales.clear();
+  pageRange = 30;
+}
 
 export const rangeLabel = (range: ReportRange) => (range === "all" ? "all time" : `last ${range} days`);
 
@@ -78,7 +97,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
   const splitRequests = useRef(new Set<string>());
 
   const [sales, setSales] = useState<SalesState>({
-    range: 30, since: null, loading: false, progress: null, error: null, truncated: false, current: null, previous: null, balance: null, loadedAt: null,
+    range: pageRange, since: null, loading: false, progress: null, error: null, truncated: false, current: null, previous: null, balance: null, loadedAt: null,
   });
   const salesAbort = useRef<AbortController | null>(null);
   /** Set by "Stop": keep and show what was loaded instead of discarding it. */
@@ -167,7 +186,8 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
     }
     if (!c.access.avatarItems) setNotice("Your role in this group can manage experiences but not avatar items, so only game passes, developer products and badges are shown.");
     setLoadingAvatar(false);
-    if (reloadSales) loadSales(sales.range, c);
+    // Bring back this page visit's sales for the creator (no request), or load them if wanted.
+    if (reloadSales || pageSales.has(creatorKey(c))) loadSales(pageRange, c);
   };
 
   useEffect(() => {
@@ -205,11 +225,35 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
     return { since: start.toISOString(), current: summarize(transactions, start, now, items), previous: summarize(transactions, prevStart, prevEnd, items) };
   };
 
-  const loadSales = async (range: ReportRange, forCreator: Creator | null = creator) => {
+  /**
+   * Shows sales for a range. Sales already loaded on this page are reused
+   * without asking Roblox; `force` (Refresh, Keep loading) fetches anyway.
+   */
+  const loadSales = async (range: ReportRange, forCreator: Creator | null = creator, { force = false }: { force?: boolean } = {}) => {
     if (!forCreator) return;
     salesWanted.current = true;
+    pageRange = range;
     if (!forCreator.access.earnings) {
       setSales((s) => ({ ...s, range, error: "Your role in this group can't view its revenue, so earnings aren't available." }));
+      return;
+    }
+    const memory = pageSales.get(creatorKey(forCreator));
+    const wanted = range === "all" ? null : new Date(Date.now() - range * 2 * DAY);
+    if (!force && memory && cacheCovers(memory.sales, wanted)) {
+      salesAbort.current?.abort();
+      transactionsRef.current = memory.sales.sales;
+      coverageRef.current = memory.sales.coveredFrom;
+      setSales((s) => ({
+        ...s,
+        range,
+        ...resummarize(range, memory.sales.sales, memory.sales.coveredFrom),
+        balance: memory.balance,
+        truncated: false,
+        loading: false,
+        progress: null,
+        error: null,
+        loadedAt: memory.loadedAt,
+      }));
       return;
     }
     salesAbort.current?.abort();
@@ -222,22 +266,14 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
       const now = new Date();
       // Twice the range, so we can compare with the previous period; null = everything.
       const want = range === "all" ? null : new Date(now.getTime() - range * 2 * DAY);
-      const cached = await salesCache.read(key);
+      // This page's sales if any, otherwise what earlier visits saved in the browser.
+      const cached = memory?.sales ?? (await salesCache.read(key));
       if (controller.signal.aborted) return;
       if (cached && cacheCovers(cached, want)) {
-        // Already have these sales: show them straight away, refresh quietly if stale.
+        // Show what's cached straight away while the newest sales are fetched.
         transactionsRef.current = cached.sales;
         coverageRef.current = cached.coveredFrom;
-        const fresh = now.getTime() - new Date(cached.updatedAt).getTime() < FRESH_MS;
-        setSales((s) => ({
-          ...s,
-          ...resummarize(range, cached.sales, cached.coveredFrom),
-          truncated: false,
-          loading: !fresh,
-          progress: fresh ? null : s.progress,
-          loadedAt: s.loadedAt ?? new Date(cached.updatedAt),
-        }));
-        if (fresh) return;
+        setSales((s) => ({ ...s, ...resummarize(range, cached.sales, cached.coveredFrom), truncated: false }));
       } else {
         // Not loaded this far back yet: show progress rather than the old range's numbers.
         setSales((s) => ({ ...s, current: null, previous: null }));
@@ -263,6 +299,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
       if (controller.signal.aborted && !salesStopped.current) return;
       const merged = mergeFetched(cached, fetched, stopAt, now);
       await salesCache.write(key, merged);
+      pageSales.set(key, { sales: merged, balance, loadedAt: new Date() });
       transactionsRef.current = merged.sales;
       coverageRef.current = merged.coveredFrom;
       const incomplete = merged.coveredFrom !== null && (want === null || new Date(merged.coveredFrom) > want);

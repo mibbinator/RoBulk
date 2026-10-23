@@ -110,7 +110,9 @@ Open the **Earnings report** tab. It loads your sales for the period you choose 
 
 Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
 
-**All time** adds up every sale since your first one, with monthly charts. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones, so switching between ranges is instant.
+**All time** adds up every sale since your first one, with monthly charts. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones.
+
+Sales are loaded once per visit to the dashboard: switching ranges, closing and reopening RoBulk, or switching creators and back all reuse what's already loaded without asking Roblox again. Click **Refresh** whenever you want the latest sales.
 
 For a single item, click **View sales** under its name in the Items tab (once sales are loaded it reads *12 sold · R$84*). The Items tab's **Sort** menu then also offers *Best sellers* and *Most earned*.
 
