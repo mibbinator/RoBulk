@@ -71,9 +71,7 @@ RoBulk has no servers, analytics or accounts. It only talks to Roblox, using the
 
 ## License
 
-Copyright (c) 2026 mibbinator. All rights reserved.
-
-The source is public so you can see exactly what RoBulk does with your account, but it isn't open for reuse: you can read, build and audit it, not copy, redistribute or publish it. See [LICENSE](LICENSE).
+[MIT](LICENSE) © 2026 mibbinator. Use it, change it, ship it, just keep the copyright notice and license with any copy.
 
 ## Disclaimer
 

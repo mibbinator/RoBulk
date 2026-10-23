@@ -10,7 +10,7 @@
     "en-US": "https://github.com/mibbinator/RoBulk"
   },
   "version": {
-    "license": "all-rights-reserved",
+    "license": "MIT",
     "approval_notes": "Content script runs only on create.roblox.com. To try it you need a Roblox account; click Bulk Edit in the bottom-right corner of the Creator Dashboard. Source is built with Vite from TypeScript: npm ci && npm run package produces dist-firefox/."
   }
 }

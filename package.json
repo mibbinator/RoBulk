@@ -21,7 +21,7 @@
     "type": "git",
     "url": "git+https://github.com/mibbinator/RoBulk.git"
   },
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "dependencies": {
     "chart.js": "^4.6.1",
     "preact": "^11.0.2"
