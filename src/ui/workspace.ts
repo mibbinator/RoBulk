@@ -9,8 +9,10 @@ import { createClient, type RobloxClient } from "../api/http";
 import { getThumbnails } from "../api/thumbnails";
 import type { Creator, Experience, SellableItem } from "../api/types";
 import { summarize, type Bucket, type EarningsSummary } from "../core/earnings";
-import type { Edit } from "../core/edits";
-import { History, chromeStorage, memoryStorage } from "../core/history";
+import { setEdits as stageEdits, type Edit } from "../core/edits";
+import { History, chromeStorage, memoryStorage, type StorageLike } from "../core/history";
+import { rememberOnSale } from "../core/offSaleWatch";
+import { extensionOverflowStore } from "../core/overflowStore";
 import { SalesCache, cacheCovers } from "../core/salesCache";
 import { DEFAULT_SETTINGS, readSettings, writeSettings, type Settings } from "../core/settings";
 import { dashboardGroupId } from "./dashboardGroup";
@@ -66,22 +68,36 @@ export interface SalesState {
 }
 
 /** Opens on the group the Creator Dashboard has selected, if the user can manage it. */
-function initialCreator(creators: Creator[]): Creator {
+export function initialCreator(creators: Creator[], wanted?: string): Creator {
+  const asked = wanted && creators.find((c) => creatorKey(c) === wanted);
+  if (asked) return asked;
   const groupId = dashboardGroupId(creators[0].id);
   return creators.find((c) => c.type === "Group" && c.id === groupId) ?? creators[0];
 }
 
-const makeStorage = () => (typeof chrome !== "undefined" && chrome.storage?.local ? chromeStorage() : memoryStorage());
+/** Outside the extension, the preview page sets this so every part of RoBulk shares one pretend store. */
+export const fallbackStorage: { current: StorageLike | null } = { current: null };
+
+/** The extension's storage, or an in-memory stand-in on the preview page and in tests. */
+export const makeStorage = (): StorageLike =>
+  typeof chrome !== "undefined" && chrome.storage?.local ? chromeStorage() : (fallbackStorage.current ?? memoryStorage());
+
+/** How RoBulk was asked to open: on a particular creator, with items to put back on sale. */
+export interface Opening {
+  creatorKey?: string;
+  /** Avatar item ids to stage "put on sale" for, once they've loaded. */
+  stageOnSale?: number[];
+}
 
 /** `initialUniverseId` preselects an experience (used by the preview page); otherwise none is selected. */
-export function useWorkspaceState(initialUniverseId: number | null = null) {
+export function useWorkspaceState(initialUniverseId: number | null = null, opening: Opening = {}) {
   const client = useMemo<RobloxClient>(() => createClient(), []);
   const storage = useMemo(makeStorage, []);
   const history = useMemo(() => new History(storage), [storage]);
-  const salesCache = useMemo(() => new SalesCache(storage), [storage]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   /** The same settings, for async work that started before a change. */
   const settingsRef = useRef<Settings>(DEFAULT_SETTINGS);
+  const salesCache = useMemo(() => new SalesCache(storage, { maxSales: () => settingsRef.current.maxStoredSales, overflow: extensionOverflowStore() }), [storage]);
 
   const [creators, setCreators] = useState<Creator[] | null>(null);
   const [creator, setCreator] = useState<Creator | null>(null);
@@ -116,8 +132,14 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
   const [salesBlocked, setSalesBlocked] = useState<string | null>(null);
   /** Set once anything asks for sales, so switching creator reloads them. */
   const salesWanted = useRef(false);
+  const staged = useRef(false);
 
   const items = useMemo(() => [...avatarItems, ...experienceItems], [avatarItems, experienceItems]);
+
+  // Whatever RoBulk loads or saves is what the off-sale alarm compares against.
+  useEffect(() => {
+    if (creator && avatarItems.length) rememberOnSale(storage, creator, avatarItems).catch(() => {});
+  }, [avatarItems]);
   const experience = experiences.find((x) => x.universeId === universeId) ?? null;
 
   const addThumbnails = (list: SellableItem[]) => {
@@ -156,7 +178,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
       .then(async (list) => {
         await settingsLoaded;
         setCreators(list);
-        setCreator(initialCreator(list));
+        setCreator(initialCreator(list, opening.creatorKey));
       })
       .catch((e) => {
         setError(`Couldn't load your account: ${e.message}. Make sure you're logged in to Roblox.`);
@@ -191,6 +213,12 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
     ]);
     if (avatarResult.status === "fulfilled") {
       setAvatarItems(avatarResult.value);
+      // Opened from an off-sale warning: stage those items back on sale, for review.
+      if (opening.stageOnSale?.length && opening.creatorKey === creatorKey(c) && !staged.current) {
+        staged.current = true;
+        const ids = new Set(opening.stageOnSale);
+        setEdits((prev) => stageEdits(prev, avatarResult.value.filter((i) => ids.has(i.id) && !i.onSale).map((item) => ({ item, patch: { onSale: true } }))));
+      }
       addThumbnails(avatarResult.value);
       ensureSplits(avatarResult.value.map((item) => ({ item, price: item.price })));
       if (settingsRef.current.dailySnapshots) history.autoSnapshot(creatorKey(c), avatarResult.value).catch(() => {});
@@ -368,6 +396,11 @@ export function useWorkspaceState(initialUniverseId: number | null = null) {
     ensureSplits,
     settings,
     updateSettings,
+    storage,
+    /** Every sale loaded for the creator, newest first. */
+    salesEntry: loaded?.entry ?? null,
+    /** Makes sure sales back to `since` are loaded (for periods that aren't a report range). */
+    loadSalesSince: (since: Date) => creator?.access.earnings && loaderFor(creator).load(since),
     savedSalesSize: () => salesCache.size(),
     clearSavedSales: () => salesCache.clear(),
   };

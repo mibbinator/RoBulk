@@ -1,5 +1,7 @@
 {
-  "categories": ["web-development"],
+  "categories": [
+    "web-development"
+  ],
   "summary": {
     "en-US": "Bulk pricing, sales scheduling and earnings reports for Roblox creators: clothing, UGC, game passes, developer products and badges."
   },
@@ -11,6 +13,6 @@
   },
   "version": {
     "license": "MIT",
-    "approval_notes": "Content script runs only on create.roblox.com. To try it you need a Roblox account; click RoBulk in the Creator Dashboard's left sidebar, below All tools. Source is built with Vite from TypeScript: npm ci && npm run package produces dist-firefox/."
+    "approval_notes": "Content script runs on create.roblox.com (the main tool) and www.roblox.com (only an off-sale warning banner). The background script only stores saved sales in IndexedDB when they do not fit in storage.local. To try it you need a Roblox account; click RoBulk in the Creator Dashboard's left sidebar, below All tools. Source is built with Vite from TypeScript: npm ci && npm run package produces dist-firefox/."
   }
 }

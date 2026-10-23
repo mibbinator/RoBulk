@@ -5,9 +5,10 @@ import { EarningsTab } from "./EarningsTab";
 import { HistoryTab } from "./HistoryTab";
 import { ItemsTab } from "./ItemsTab";
 import { OptionsTab } from "./OptionsTab";
-import { WorkspaceContext, creatorKey, useWorkspaceState } from "./workspace";
+import { PayoutsTab } from "./PayoutsTab";
+import { WorkspaceContext, creatorKey, useWorkspaceState, type Opening } from "./workspace";
 
-export type TabId = "items" | "earnings" | "create" | "badges" | "history" | "options";
+export type TabId = "items" | "earnings" | "create" | "badges" | "history" | "payouts" | "options";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "items", label: "Items" },
@@ -15,11 +16,25 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "create", label: "Create & copy" },
   { id: "badges", label: "Badges" },
   { id: "history", label: "History" },
+  { id: "payouts", label: "Payouts" },
   { id: "options", label: "Options" },
 ];
 
-export function Shell({ onClose, initialTab = "items", initialUniverseId = null }: { onClose: () => void; initialTab?: TabId; initialUniverseId?: number | null }) {
-  const ws = useWorkspaceState(initialUniverseId);
+export function Shell({
+  onClose,
+  initialTab = "items",
+  initialUniverseId = null,
+  opening,
+  onOpenOverview,
+}: {
+  onClose: () => void;
+  /** Opens the account overview instead (not shown on the preview page). */
+  onOpenOverview?: () => void;
+  initialTab?: TabId;
+  initialUniverseId?: number | null;
+  opening?: Opening;
+}) {
+  const ws = useWorkspaceState(initialUniverseId, opening);
   const [tab, setTab] = useState<TabId>(initialTab);
   const [busy, setBusy] = useState(false);
   const { creators, creator, experiences, universeId, edits } = ws;
@@ -37,7 +52,8 @@ export function Shell({ onClose, initialTab = "items", initialUniverseId = null 
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const tabAvailable = (id: TabId) => (id === "create" || id === "badges" ? creator?.access.experiences !== false : true);
+  const tabAvailable = (id: TabId) =>
+    id === "create" || id === "badges" ? creator?.access.experiences !== false : id === "payouts" ? creator?.type === "Group" : true;
 
   return (
     <WorkspaceContext.Provider value={ws}>
@@ -93,6 +109,11 @@ export function Shell({ onClose, initialTab = "items", initialUniverseId = null 
                   </option>
                 ))}
               </select>
+              {onOpenOverview && (
+                <button class="rb-btn rb-btn-ghost" disabled={busy} onClick={() => confirmDiscard("Open the account overview") && onOpenOverview()}>
+                  Account overview
+                </button>
+              )}
               <button class="rb-icon-btn" title="Close (Esc)" onClick={requestClose} disabled={busy}>
                 ✕
               </button>
@@ -122,6 +143,7 @@ export function Shell({ onClose, initialTab = "items", initialUniverseId = null 
           {tab === "create" && <CreateTab onBusy={setBusy} />}
           {tab === "badges" && <BadgesTab onBusy={setBusy} />}
           {tab === "history" && <HistoryTab onRestore={() => setTab("items")} />}
+          {tab === "payouts" && <PayoutsTab />}
           {tab === "options" && <OptionsTab />}
 
           {/* The Earnings report shows its own progress. */}

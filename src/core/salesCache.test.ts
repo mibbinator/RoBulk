@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SaleTransaction } from "./earnings";
-import { memoryStorage } from "./history";
-import { MAX_STORED_SALES, PENDING_MAX_DAYS, SalesCache, mergeFetched, mergeOlder, packSales, planFetch, unpackSales, type SalesCacheEntry } from "./salesCache";
+import { memoryStorage, type StorageLike } from "./history";
+import { memoryOverflowStore } from "./overflowStore";
+import { DEFAULT_MAX_STORED_SALES as MAX_STORED_SALES, PENDING_MAX_DAYS, SalesCache, mergeFetched, mergeOlder, packSales, planFetch, unpackSales, type SalesCacheEntry } from "./salesCache";
 
 const DAY = 86_400_000;
 const now = new Date("2026-10-23T12:00:00Z");
@@ -170,5 +171,43 @@ describe("stored sales", () => {
     expect(await cache.read("User:1")).toBeNull();
     expect(await cache.read("Group:9")).toBeNull();
     expect(await storage.get("log")).toEqual([]); // other data is left alone
+  });
+});
+
+describe("storage limit and overflow", () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...sale(String(i), 0), created: new Date(now.getTime() - i * 1000).toISOString() }));
+
+  it("keeps as many sales as the Options tab allows, or all of them", () => {
+    expect(packSales({ sales: many(50), coveredFrom: null, updatedAt: now.toISOString() }, 20).rows).toHaveLength(20);
+    expect(packSales({ sales: many(50), coveredFrom: null, updatedAt: now.toISOString() }, null).rows).toHaveLength(50);
+  });
+
+  it("saves to the overflow store when the extension's storage refuses, and reads it back", async () => {
+    const storage = memoryStorage();
+    let full = true;
+    const picky: StorageLike = {
+      ...storage,
+      set: async (key, value) => {
+        if (full && key.startsWith("sales:") && !(value as { inOverflow?: boolean }).inOverflow) throw new Error("QUOTA_BYTES quota exceeded");
+        return storage.set(key, value);
+      },
+    };
+    const overflow = memoryOverflowStore();
+    const cache = new SalesCache(picky, { overflow, maxSales: () => null });
+    const entry: SalesCacheEntry = { sales: many(3), coveredFrom: null, updatedAt: now.toISOString(), olderCursor: null };
+
+    await cache.write("User:1", entry);
+    expect(await overflow.get("User:1")).toBeDefined();
+    expect((await cache.read("User:1"))!.sales.map((s) => s.id)).toEqual(["0", "1", "2"]);
+    expect(await cache.size()).toBeGreaterThan(0);
+
+    // Once the extension's storage takes it again, the overflow copy goes.
+    full = false;
+    await cache.write("User:1", entry);
+    expect(await overflow.get("User:1")).toBeUndefined();
+    expect((await cache.read("User:1"))!.sales).toHaveLength(3);
+
+    await cache.clear();
+    expect(await cache.read("User:1")).toBeNull();
   });
 });

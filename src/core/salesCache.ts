@@ -1,5 +1,6 @@
 import type { SaleTransaction } from "./earnings";
 import type { StorageLike } from "./history";
+import type { OverflowStore } from "./overflowStore";
 
 // Sale history cached in the browser, so the earnings report (and especially
 // "All time") doesn't page through every sale on each load. Roblox only pages
@@ -12,10 +13,10 @@ export const REFRESH_OVERLAP_MS = DAY;
 /** Sales stay pending for up to 30 days; anything still pending after this is ignored. */
 export const PENDING_MAX_DAYS = 35;
 /**
- * The most sales kept in the browser per creator (about 15 MB). Past this the
- * oldest are dropped, so reading the cache never stalls the page.
+ * How many sales are kept in the browser per creator unless the Options tab
+ * says otherwise (about 6 MB). Past the limit the oldest are dropped.
  */
-export const MAX_STORED_SALES = 250_000;
+export const DEFAULT_MAX_STORED_SALES = 100_000;
 
 export interface SalesCacheEntry {
   /** Newest first. */
@@ -131,10 +132,11 @@ export interface StoredSales {
   rows: [string, string, number, number, number, 0 | 1][];
 }
 
-export function packSales(entry: SalesCacheEntry): StoredSales {
+/** `limit` is the most sales to keep (newest first); null keeps them all. */
+export function packSales(entry: SalesCacheEntry, limit: number | null = DEFAULT_MAX_STORED_SALES): StoredSales {
   let { sales, coveredFrom, olderCursor = null } = entry;
-  if (sales.length > MAX_STORED_SALES) {
-    sales = sales.slice(0, MAX_STORED_SALES);
+  if (limit !== null && sales.length > limit) {
+    sales = sales.slice(0, limit);
     coveredFrom = sales.at(-1)!.created;
     olderCursor = null; // it pointed past the sales that were dropped
   }
@@ -172,32 +174,65 @@ export function unpackSales(stored: StoredSales): SalesCacheEntry {
 
 const PREFIX = "sales:";
 
+/** Left in the extension's storage when a creator's sales had to go to the overflow store. */
+interface OverflowMarker {
+  v: 2;
+  inOverflow: true;
+}
+
+export interface SalesCacheOptions {
+  /** The most sales to keep per creator (null = no limit); read on every save. */
+  maxSales?: () => number | null;
+  /** Where sales go when the extension's storage won't take them. */
+  overflow?: OverflowStore | null;
+}
+
 export class SalesCache {
-  constructor(private storage: StorageLike) {}
+  constructor(
+    private storage: StorageLike,
+    private options: SalesCacheOptions = {},
+  ) {}
 
   async read(creatorKey: string): Promise<SalesCacheEntry | null> {
     try {
-      const stored = (await this.storage.get(PREFIX + creatorKey)) as StoredSales | SalesCacheEntry | undefined;
+      let stored = (await this.storage.get(PREFIX + creatorKey)) as StoredSales | SalesCacheEntry | OverflowMarker | undefined;
+      if (stored && "inOverflow" in stored) stored = (await this.options.overflow?.get(creatorKey)) as StoredSales | undefined;
       if (!stored) return null;
       // Entries saved before the compact format are plain objects.
-      return "v" in stored ? unpackSales(stored) : stored;
+      return "v" in stored ? unpackSales(stored as StoredSales) : (stored as SalesCacheEntry);
     } catch {
       return null;
     }
   }
 
   async write(creatorKey: string, entry: SalesCacheEntry): Promise<void> {
+    const packed = packSales(entry, this.options.maxSales ? this.options.maxSales() : DEFAULT_MAX_STORED_SALES);
+    const key = PREFIX + creatorKey;
     try {
-      await this.storage.set(PREFIX + creatorKey, packSales(entry));
+      const before = await this.storage.get(key).catch(() => undefined);
+      await this.storage.set(key, packed);
+      // It fits again, so an older copy in the overflow store isn't needed.
+      if (before && typeof before === "object" && "inOverflow" in before) await this.options.overflow?.remove(creatorKey).catch(() => {});
     } catch {
-      // A full or unavailable cache only means the next load re-fetches.
+      // The extension's storage refused it (full, or too big at once): use the overflow store.
+      // If that fails too, the next load just fetches from Roblox again.
+      const overflow = this.options.overflow;
+      if (!overflow) return;
+      try {
+        await overflow.set(creatorKey, packed);
+        await this.storage.set(key, { v: 2, inOverflow: true } satisfies OverflowMarker).catch(() => {});
+      } catch {
+        // nothing more to try
+      }
     }
   }
 
   /** Bytes the saved sales take up for every creator, or null if the browser can't tell. */
   async size(): Promise<number | null> {
     try {
-      return await this.storage.bytesInUse(await this.storage.keys(PREFIX));
+      const main = await this.storage.bytesInUse(await this.storage.keys(PREFIX));
+      const overflow = this.options.overflow ? await this.options.overflow.bytes().catch(() => 0) : 0;
+      return main === null ? null : main + overflow;
     } catch {
       return null;
     }
@@ -206,5 +241,6 @@ export class SalesCache {
   /** Forgets saved sales for every creator. */
   async clear(): Promise<void> {
     for (const key of await this.storage.keys(PREFIX)) await this.storage.remove(key);
+    await this.options.overflow?.clear().catch(() => {});
   }
 }

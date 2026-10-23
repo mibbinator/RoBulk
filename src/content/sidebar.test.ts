@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ENTRY_ID, findAllToolsEntry, syncSidebarEntry } from "./sidebar";
+import { ENTRY_ID, findAllToolsEntry, setSidebarProgress, syncSidebarEntry } from "./sidebar";
 
 // A cut-down copy of the Creator Dashboard's sidebar: each entry is a wrapper
 // div around an MUI button with a startIcon span and a Typography label.
@@ -24,6 +24,7 @@ function sidebar() {
 }
 
 afterEach(() => {
+  setSidebarProgress(document, null);
   document.body.innerHTML = "";
 });
 
@@ -100,5 +101,29 @@ describe("sidebar entry", () => {
     const link = document.querySelector(`#${ENTRY_ID} a`)!;
     expect(link.hasAttribute("href")).toBe(false); // clicking opens RoBulk instead of navigating
     expect(link.textContent?.trim()).toBe("RoBulk");
+  });
+  it("shows a progress bar while sales load, and keeps it when the entry is re-copied", () => {
+    const rail = sidebar();
+    syncSidebarEntry(document, "logo", () => {});
+    const bar = () => document.querySelector<HTMLElement>(`#${ENTRY_ID} [data-robulk-progress]`);
+    expect(bar()).toBeNull();
+
+    setSidebarProgress(document, { fraction: 0.4, label: "Loading sales… 400 so far" });
+    expect((bar()!.firstElementChild as HTMLElement).style.width).toBe("40%");
+    expect(bar()!.getAttribute("aria-valuenow")).toBe("40");
+    expect(document.querySelector(`#${ENTRY_ID} button`)!.getAttribute("title")).toBe("RoBulk: Loading sales… 400 so far");
+
+    // All time can't say how far along it is.
+    setSidebarProgress(document, { fraction: null, label: "Loading your full sales history…" });
+    expect(bar()!.classList.contains("is-indeterminate")).toBe(true);
+
+    // Collapsing the sidebar re-copies the entry; the bar comes with it.
+    rail.querySelectorAll("button").forEach((b) => b.classList.add("tss-icon-only"));
+    syncSidebarEntry(document, "logo", () => {});
+    expect(bar()).not.toBeNull();
+
+    setSidebarProgress(document, null);
+    expect(bar()).toBeNull();
+    expect(document.querySelector(`#${ENTRY_ID} button`)!.getAttribute("title")).toBe("RoBulk");
   });
 });

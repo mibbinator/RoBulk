@@ -26,8 +26,19 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - Earned, sales, average per sale, unique buyers, pending Robux and current balance, compared with the previous period
 - Daily earnings, earnings by category, top items, sales per day and top buyers, for the last 7, 30 or 90 days or all time
 - Per-item sales and earnings from the Items tab
-- Sales load in the background when RoBulk opens, with a progress bar at the bottom of the panel
+- Sales load in the background when RoBulk opens, with a progress bar at the bottom of the panel and under RoBulk in the dashboard's sidebar
+- A count of new sales since you last opened the report, on the sidebar entry and at the top of the report
 - Every chart has a table view, and the report exports to .csv
+
+**Account Overview**
+- Earnings, sales, pending Robux and balance for your account and every group you can see the revenue of, side by side, with totals
+
+**Payouts** (groups)
+- Works out what each designer is owed: their share of what their items earned, since their last payout or for a month you pick
+- Exports to .csv and links to Roblox's payouts page. RoBulk never sends Robux itself
+
+**Off-sale alarm**
+- If items RoBulk has seen on sale are taken off sale without you doing it (for example when a group owner's Premium runs out), a banner shows on roblox.com and on the Creator Dashboard until you close it, with a one-click way to put them back on sale
 
 **Create & copy**
 - Bulk-create developer products or game passes from templates (donation tiers, currency packs, starter passes) or a numbered series, with one icon for all of them
@@ -41,14 +52,16 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - Activity log of everything saved through RoBulk, exportable to .csv
 
 **Options**
-- Switch off background sales loading, saved sales, the per-sale earnings lookup or daily snapshots
+- Switch off background sales loading, saved sales, the per-sale earnings lookup, daily snapshots, the off-sale alarm or the new-sales count
+- Choose how many sales to keep per account or group (100,000 by default, up to no limit)
+- Experimental: a "Best times to sell" chart, and a price vs. sales comparison for each item
 
 ## How to use
 
 ### 1. Open RoBulk
 
 1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
-2. Click **RoBulk** in the dashboard's left sidebar, just below **All tools**. If the sidebar is hidden (in a narrow window, for example), a blue **RoBulk** button appears in the bottom-right corner instead. If you don't see either, refresh the page.
+2. Click **RoBulk** in the dashboard's left sidebar, just below **All tools**. (**Account Overview**, just below it, opens the side-by-side view of all your groups.) If the sidebar is hidden (in a narrow window, for example), a blue **RoBulk** button appears in the bottom-right corner instead. If you don't see either, refresh the page.
 3. Use the two menus at the top right:
    - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. RoBulk opens on whichever group you have selected in the Creator Dashboard (or on you, if you're viewing your own creations).
    - **Experience:** starts on *No experience selected*. Pick a game to also show its passes and developer products, and to use the Create & copy and Badges tabs. Your avatar items show either way.
@@ -172,9 +185,29 @@ Copy it into a ModuleScript (for example `ReplicatedStorage.MonetizationIds`) an
 
 Open the **Badges** tab with an experience selected. The chart shows your most-awarded badges, and each row shows awards, win rate and awards yesterday. Select badges and use **Enable**, **Disable** or **Rename…** (or click a badge's *Enabled/Disabled* pill to toggle it), then **Save**.
 
-### 13. Change what RoBulk does on its own (Options)
+### 13. Pay your designers (Payouts)
 
-The **Options** tab lets you switch off things RoBulk does on its own: loading sales in the background, remembering sales between visits (turning it off deletes them, and it shows how much space they take), looking up what you get per sale, and the daily snapshot. Settings are saved in your browser and apply to every creator.
+Open the **Payouts** tab with a group selected. Add each designer by Roblox username, set their share, and click **Choose items** to pick the items they made (search for a tag like `[+]` and click **Select all shown**). RoBulk adds up what those items earned the group and works out each payout, since their last payout by default, or for this month, last month or the last 30 days.
+
+Pay them on Roblox's payouts page (**Open Roblox payouts**), then click **Mark as paid** so their next period starts from there. RoBulk never sends Robux itself.
+
+### 14. See all your groups at once (Account Overview)
+
+Click **Account Overview** in the dashboard's sidebar (or the button at the top of RoBulk). It loads each account and group's sales one at a time and shows earnings, change from the previous period, sales, pending Robux and balance side by side, with totals. **Open report** jumps to that group's Earnings report.
+
+### 15. Get warned when items go off sale
+
+RoBulk remembers which items were on sale whenever it loads them. When you visit roblox.com or the Creator Dashboard, it checks again (at most every 10 minutes), and if any were taken off sale without RoBulk doing it, a banner says so on each site. It stays until you click its ✕, separately on each site. On the dashboard, **Put back on sale…** opens RoBulk with those items staged on sale, ready to review and save.
+
+### 16. Change what RoBulk does on its own (Options)
+
+The **Options** tab lets you switch off things RoBulk does on its own: loading sales in the background, remembering sales between visits (turning it off deletes them, and it shows how much space they take), looking up what you get per sale, the daily snapshot, the off-sale alarm and the new-sales count. Settings are saved in your browser and apply to every creator.
+
+You can also choose how many sales to keep per account or group: 100,000 by default (about 6 MB), up to no limit. Above 500,000, RoBulk warns that it can take a lot of space. Sales are saved in the extension's storage; if the browser won't take that many, RoBulk keeps them in a database of its own instead.
+
+Under **Experimental**:
+- **Best times to sell** adds a day-by-hour chart of when your sales come in to the Earnings report.
+- **Price vs. sales** compares how an item sold before and after its last price change, in the item's sales view. It uses RoBulk's snapshots and change log, so it only knows about changes from when RoBulk was installed.
 
 ## Tips and troubleshooting
 

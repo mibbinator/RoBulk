@@ -8,17 +8,32 @@ export interface Settings {
   backgroundSales: boolean;
   /** Keep loaded sales in the browser so later visits only fetch new ones. */
   rememberSales: boolean;
+  /** The most sales kept in the browser per account or group; null for no limit. */
+  maxStoredSales: number | null;
   /** Look up Roblox's share for each price to show "you get R$…". */
   perSaleEarnings: boolean;
   /** Take a snapshot of prices and sale status once a day, for undo. */
   dailySnapshots: boolean;
+  /** Warn when items go off sale without RoBulk doing it. */
+  offSaleAlarm: boolean;
+  /** Count new sales since the Earnings report was last opened, on the sidebar entry. */
+  newSalesBadge: boolean;
+  /** Experimental: a day-by-hour chart of when sales happen. */
+  bestTimes: boolean;
+  /** Experimental: compare an item's sales before and after its last price change. */
+  priceImpact: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   backgroundSales: true,
   rememberSales: true,
+  maxStoredSales: 100_000,
   perSaleEarnings: true,
   dailySnapshots: true,
+  offSaleAlarm: true,
+  newSalesBadge: true,
+  bestTimes: false,
+  priceImpact: false,
 };
 
 const KEY = "settings";

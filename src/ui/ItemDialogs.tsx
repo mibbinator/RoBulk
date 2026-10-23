@@ -3,11 +3,13 @@ import type { SellableItem } from "../api/types";
 import { CATEGORIES, categoryFor } from "../core/categories";
 import { effective, type Edit, type Edits, type SaleSchedule } from "../core/edits";
 import { toLuaModule } from "../core/luaExport";
+import { lastPriceChange, priceImpact, type PriceChange } from "../core/priceImpact";
+import { cacheCovers } from "../core/salesCache";
 import { applyPriceRule, type PriceOperation, type Rounding } from "../core/priceRules";
 import { DESCRIPTION_LIMIT, NAME_LIMIT, applyTextOperation, type TextOperation } from "../core/textRules";
 import { BarChart, StatTile, robux } from "./charts";
 import { Dialog, Field, Segmented, copyText, downloadText, fileSafe } from "./components";
-import { rangeLabel, useWorkspace } from "./workspace";
+import { creatorKey, rangeLabel, useWorkspace } from "./workspace";
 
 type Patches = { item: SellableItem; patch: Edit }[];
 
@@ -355,8 +357,69 @@ export function ImportResultDialog({ staged, warnings, onClose }: { staged: numb
   );
 }
 
+const longDate = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: "medium" });
+const percentChange = (before: number, after: number) => (before === 0 ? null : (after - before) / before);
+
+/** Experimental: how the item sold before and after its last price change. */
+function PriceImpactSection({ item }: { item: SellableItem }) {
+  const { history, creator, salesEntry, loadSalesSince } = useWorkspace();
+  const [change, setChange] = useState<PriceChange | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!creator) return;
+    // Passes and products are snapshotted per experience.
+    const key = item.kind === "avatar" ? creatorKey(creator) : `${creatorKey(creator)}:universe:${item.universeId}`;
+    Promise.all([history.snapshots(key), history.log()]).then(([snapshots, log]) => setChange(lastPriceChange(item.key, snapshots, log)));
+  }, [item.key]);
+
+  const now = useMemo(() => new Date(), [salesEntry]);
+  const impact = change && salesEntry ? priceImpact(item.key, change, salesEntry.sales, now) : null;
+  const covered = !impact || (salesEntry ? cacheCovers(salesEntry, impact.needsSalesSince) : false);
+  useEffect(() => {
+    if (impact && !covered) loadSalesSince(impact.needsSalesSince);
+  }, [impact?.needsSalesSince.getTime(), covered]);
+
+  if (change === undefined) return null;
+  return (
+    <section class="rb-impact">
+      <h3 class="rb-subhead">
+        Price vs. sales <span class="rb-chip">Experimental</span>
+      </h3>
+      {change === null && <p class="rb-muted rb-small">No price change RoBulk knows of yet. It learns prices from its daily snapshots and from the changes you save.</p>}
+      {change && (
+        <p class="rb-small">
+          The price went from {robux(change.from)} to {robux(change.to)} {change.approximate ? "around" : "on"} {longDate(change.at)}
+          {change.approximate ? " (changed outside RoBulk, so the day is approximate)" : ""}.
+        </p>
+      )}
+      {change && !impact && <p class="rb-muted rb-small">That's too recent to compare yet. Check back in a day or so.</p>}
+      {impact && !covered && <p class="rb-muted rb-small">Loading sales back to {longDate(impact.needsSalesSince)} to compare…</p>}
+      {impact && covered && (
+        <>
+          <p class="rb-muted rb-small">
+            The {Math.round(impact.after.days)} days after, compared with the {Math.round(impact.before.days)} days before:
+          </p>
+          <div class="rb-stats-row">
+            <StatTile
+              label="Sales a day"
+              value={`${impact.before.salesPerDay.toFixed(1)} → ${impact.after.salesPerDay.toFixed(1)}`}
+              delta={percentChange(impact.before.salesPerDay, impact.after.salesPerDay)}
+            />
+            <StatTile
+              label="Earned a day"
+              value={`${robux(impact.before.robuxPerDay)} → ${robux(impact.after.robuxPerDay)}`}
+              delta={percentChange(impact.before.robuxPerDay, impact.after.robuxPerDay)}
+            />
+          </div>
+          <p class="rb-muted rb-small">Other things change sales too (seasons, events, trends), so treat this as a hint rather than proof.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function ItemStatsDialog({ item, onClose }: { item: SellableItem; onClose: () => void }) {
-  const { sales, loadSales, earningsPerSale, thumbs } = useWorkspace();
+  const { sales, loadSales, earningsPerSale, thumbs, settings } = useWorkspace();
   useEffect(() => {
     if (!sales.loadedAt && !sales.loading) loadSales(sales.range);
   }, []);
@@ -393,6 +456,7 @@ export function ItemStatsDialog({ item, onClose }: { item: SellableItem; onClose
           />
         </>
       )}
+      {settings.priceImpact && <PriceImpactSection item={item} />}
     </Dialog>
   );
 }

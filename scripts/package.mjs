@@ -10,8 +10,10 @@ import { zipSync } from "fflate";
 const manifest = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
 const { version } = manifest;
 
+// Firefox runs background scripts as event pages rather than service workers.
 const firefoxManifest = {
   ...manifest,
+  background: { scripts: manifest.background.scripts ?? [manifest.background.service_worker] },
   browser_specific_settings: {
     gecko: {
       id: "robulk@robulk.dev",

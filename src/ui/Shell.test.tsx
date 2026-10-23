@@ -305,4 +305,16 @@ describe("Shell", () => {
     byText(banner, "button", "Dismiss")!.click();
     await waitFor(() => !root.querySelector(".rb-unpublished"));
   }, 20000);
+  it("opens on the creator from an off-sale warning with those items staged back on sale", async () => {
+    const { fetchImpl } = fakeRoblox();
+    vi.stubGlobal("fetch", fetchImpl);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    render(<Shell onClose={() => {}} opening={{ creatorKey: "User:1", stageOnSale: [101] }} />, root);
+
+    // 101 is the off-sale shirt: it's staged on sale, ready to review and save.
+    await waitFor(() => byText(root, ".rb-tab-badge", "1"));
+    expect(byText(root, ".rb-tabs button", /Items/)!.textContent).toContain("1");
+  }, 20000);
 });

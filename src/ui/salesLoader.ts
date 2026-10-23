@@ -33,6 +33,9 @@ interface Running {
 
 const covers = (outer: Date | null, inner: Date | null) => outer === null || (inner !== null && outer <= inner);
 
+/** Told about every change to any loader, for things outside the panel like the sidebar. */
+const pageListeners = new Set<() => void>();
+
 export class SalesLoader {
   state: LoaderState = { entry: null, balance: null, loadedAt: null, loading: false, progress: null, fraction: null, error: null };
   private listeners = new Set<() => void>();
@@ -57,6 +60,7 @@ export class SalesLoader {
   private set(patch: Partial<LoaderState>) {
     this.state = { ...this.state, ...patch };
     for (const l of this.listeners) l();
+    for (const l of pageListeners) l();
   }
 
   /** Keeps newly loaded sales and saves them to the browser as soon as it's free. */
@@ -100,6 +104,18 @@ export class SalesLoader {
     this.running = { want, controller };
     void this.run(want, controller).finally(() => {
       if (this.running?.controller === controller) this.running = null;
+    });
+  }
+
+  /** Resolves once nothing is loading (straight away if nothing is). */
+  whenDone(): Promise<void> {
+    if (!this.state.loading) return Promise.resolve();
+    return new Promise((resolve) => {
+      const unsubscribe = this.subscribe(() => {
+        if (this.state.loading) return;
+        unsubscribe();
+        resolve();
+      });
     });
   }
 
@@ -202,6 +218,26 @@ export function salesLoader(creator: Creator, client: RobloxClient, cache: Sales
   let loader = loaders.get(key);
   if (!loader) loaders.set(key, (loader = new SalesLoader(creator, client, cache, remember)));
   return loader;
+}
+
+export interface PageLoading {
+  /** 0 to 1, or null when there's no way to know. */
+  fraction: number | null;
+  label: string;
+}
+
+/** The sales load running on the page right now, if any. */
+export function pageLoading(): PageLoading | null {
+  for (const l of loaders.values()) {
+    if (l.state.loading) return { fraction: l.state.fraction, label: l.state.progress ?? "Loading sales…" };
+  }
+  return null;
+}
+
+/** Calls `listener` whenever any loader on the page changes. */
+export function onPageLoadingChange(listener: () => void): () => void {
+  pageListeners.add(listener);
+  return () => pageListeners.delete(listener);
 }
 
 /** Stops every load and forgets this page visit's sales (for tests). */

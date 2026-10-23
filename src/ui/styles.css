@@ -574,3 +574,68 @@
   border-radius: 5px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
+
+/* Off-sale alarm banners, fixed to the top of the page until closed */
+.rb-alerts {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(760px, calc(100vw - 32px));
+  transform: translateX(-50%);
+}
+.rb-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--rb-border);
+  border-left: 4px solid var(--rb-warning);
+  border-radius: var(--rb-radius);
+  background: var(--rb-surface);
+  box-shadow: var(--rb-shadow);
+  color: var(--rb-text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.rb-alert-text {
+  flex: 1;
+  min-width: 0;
+}
+.rb-alert-text span {
+  color: var(--rb-muted);
+}
+.rb-alert-items {
+  max-height: 120px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  overflow-y: auto;
+  color: var(--rb-muted);
+}
+.rb-alert-action {
+  flex-shrink: 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rb-alert-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rb-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.rb-alert-close:hover {
+  background: var(--rb-hover);
+  color: var(--rb-text);
+}
+@media (max-width: 560px) {
+  .rb-alert {
+    flex-wrap: wrap;
+  }
+}

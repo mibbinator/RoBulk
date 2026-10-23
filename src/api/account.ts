@@ -70,3 +70,33 @@ export async function listCreators(client: RobloxClient): Promise<Creator[]> {
 
   return [{ type: "User", id: me.id, name: me.name, access: FULL_ACCESS }, ...checked.filter((c): c is Creator => c !== null)];
 }
+
+const CREATORS_KEY = "creators";
+const CREATORS_FRESH_MS = 60 * 60_000;
+
+/**
+ * listCreators, remembered for an hour. Checking every group's permissions
+ * takes a request per group, which is too many to repeat on every dashboard
+ * page; the RoBulk panel itself always asks fresh.
+ */
+export async function cachedCreators(
+  client: RobloxClient,
+  storage: { get(key: string): Promise<unknown>; set(key: string, value: unknown): Promise<void> },
+  now = Date.now(),
+): Promise<Creator[]> {
+  const saved = (await storage.get(CREATORS_KEY).catch(() => undefined)) as { at: number; list: Creator[] } | undefined;
+  if (saved && now - saved.at < CREATORS_FRESH_MS && saved.list.length) return saved.list;
+  const list = await listCreators(client);
+  await storage.set(CREATORS_KEY, { at: now, list }).catch(() => {});
+  return list;
+}
+
+/** Looks up a Roblox user by username. Null when there's no such user. */
+export async function findUser(client: RobloxClient, username: string): Promise<{ id: number; name: string } | null> {
+  const res = await client.json<{ data: { id: number; name: string }[] }>("https://users.roblox.com/v1/usernames/users", {
+    method: "POST",
+    body: JSON.stringify({ usernames: [username.trim()], excludeBannedUsers: true }),
+    headers: { "Content-Type": "application/json" },
+  });
+  return res.data[0] ?? null;
+}

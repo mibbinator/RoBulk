@@ -10,9 +10,10 @@
     "128": "icons/icon-128.png"
   },
   "permissions": ["storage", "unlimitedStorage"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
-      "matches": ["https://create.roblox.com/*"],
+      "matches": ["https://create.roblox.com/*", "https://www.roblox.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

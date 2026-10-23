@@ -1,9 +1,11 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { CategoryId } from "../core/categories";
 import { change, type DayPoint, type EarningsSummary } from "../core/earnings";
+import { markSeen, readSeen, salesSince } from "../core/seenSales";
+import { BestTimes } from "./BestTimes";
 import { AreaChart, BarChart, ChartCard, DoughnutChart, StatTile, compact, robux, type Slice } from "./charts";
 import { Segmented, downloadText, fileSafe } from "./components";
-import { rangeLabel, useWorkspace, type ReportRange } from "./workspace";
+import { creatorKey, rangeLabel, useWorkspace, type ReportRange } from "./workspace";
 
 // Each category keeps the same color everywhere, whatever its rank.
 const CATEGORY_SLOT: Record<CategoryId | "otherFold", number> = {
@@ -31,7 +33,25 @@ function reportCsv(points: DayPoint[], weekly: boolean, s: EarningsSummary): str
 }
 
 export function EarningsTab() {
-  const { creator, sales, loadSales, stopSales } = useWorkspace();
+  const { creator, sales, loadSales, stopSales, storage, salesEntry, settings } = useWorkspace();
+  /** When this creator's report was last opened before now, for the "since you last looked" line. */
+  const [lastLooked, setLastLooked] = useState<{ key: string; at: string | null } | null>(null);
+
+  // Opening the report counts as looking: remember when, and clear the sidebar's count.
+  useEffect(() => {
+    if (!creator) return;
+    const key = creatorKey(creator);
+    let current = true;
+    readSeen(storage, key).then((at) => {
+      if (!current) return;
+      setLastLooked({ key, at });
+      markSeen(storage, key).catch(() => {});
+    });
+    return () => {
+      current = false;
+    };
+  }, [creator]);
+  const sinceLast = lastLooked?.at && creator && lastLooked.key === creatorKey(creator) && salesEntry ? salesSince(salesEntry.sales, lastLooked.at) : null;
 
   // Load on open; the workspace reloads it after a creator switch.
   useEffect(() => {
@@ -89,6 +109,14 @@ export function EarningsTab() {
       </div>
 
       <main class="rb-body rb-report">
+        {sinceLast && lastLooked?.at && (
+          <p class="rb-since-last">
+            {sinceLast.count === 0
+              ? "No new sales"
+              : `${sinceLast.count.toLocaleString()} new ${sinceLast.count === 1 ? "sale" : "sales"} (${robux(sinceLast.robux)})`}{" "}
+            since you last looked, on {new Date(lastLooked.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+          </p>
+        )}
         {sales.error && <div class="rb-empty rb-error">{sales.error}</div>}
         {!s && sales.loading && <div class="rb-empty">{sales.progress}</div>}
         {s && sales.partial && (
@@ -197,6 +225,8 @@ export function EarningsTab() {
                     </table>
                   </div>
                 </section>
+
+                {settings.bestTimes && salesEntry && sales.since && <BestTimes transactions={salesEntry.sales} from={new Date(sales.since)} to={new Date()} />}
               </div>
             )}
           </>
