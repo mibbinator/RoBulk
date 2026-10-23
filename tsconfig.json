@@ -12,6 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "types": ["chrome", "vite/client"]
   },
   "include": ["src", "preview", "vite.config.ts", "vite.preview.config.ts"]

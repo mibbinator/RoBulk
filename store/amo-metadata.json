@@ -1,0 +1,16 @@
+{
+  "categories": ["web-development"],
+  "summary": {
+    "en-US": "Bulk pricing, sales scheduling and earnings reports for Roblox creators: clothing, UGC, game passes, developer products and badges."
+  },
+  "description": {
+    "en-US": "RoBulk adds a Bulk Edit panel to the Roblox Creator Dashboard (create.roblox.com).\n\nPut dozens of items on or off sale at once, change prices with rules (raise by %, round to prices ending in 9), schedule sales, rename in bulk, and manage regional and managed pricing. Every change is staged for review before anything is saved.\n\nThe Earnings report shows daily earnings, best sellers, top buyers and a category breakdown. You can also bulk-create game passes and developer products from templates, copy them between experiences, manage badges, and undo changes from daily snapshots.\n\nRoBulk has no servers, analytics or accounts. It only talks to Roblox, using the login you already have.\n\nNot affiliated with Roblox Corporation."
+  },
+  "homepage": {
+    "en-US": "https://github.com/mibbinator/RoBulk"
+  },
+  "version": {
+    "license": "all-rights-reserved",
+    "approval_notes": "Content script runs only on create.roblox.com. To try it you need a Roblox account; click Bulk Edit in the bottom-right corner of the Creator Dashboard. Source is built with Vite from TypeScript: npm ci && npm run package produces dist-firefox/."
+  }
+}

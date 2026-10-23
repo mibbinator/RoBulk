@@ -1,0 +1,63 @@
+name: Release
+
+# Runs when a version tag (v1.2.3) is pushed, usually by `npm run release`.
+# Store publishing steps are skipped until their secrets are added; see RELEASING.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+      CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+      CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
+      AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
+      AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+
+      - name: Check the tag matches the manifest version
+        run: |
+          version=$(node -p "require('./dist/manifest.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match manifest version $version"
+            exit 1
+          fi
+
+      - name: Publish to the Chrome Web Store
+        if: env.CWS_EXTENSION_ID != ''
+        run: node scripts/publish-chrome.mjs "release/robulk-chrome-${GITHUB_REF_NAME#v}.zip"
+
+      # Mozilla reviews bundled code against its source, so send that along.
+      - name: Publish to Firefox Add-ons
+        if: env.AMO_API_KEY != ''
+        run: >
+          git archive --format=zip -o release/source.zip HEAD &&
+          npx --yes web-ext@8 sign
+          --source-dir dist-firefox
+          --channel listed
+          --amo-metadata store/amo-metadata.json
+          --upload-source-code release/source.zip
+          --artifacts-dir release/firefox-signed
+          --api-key "$AMO_API_KEY"
+          --api-secret "$AMO_API_SECRET"
+
+      - name: Attach the zips to a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/robulk-*.zip --title "$GITHUB_REF_NAME" --generate-notes

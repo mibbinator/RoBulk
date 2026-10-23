@@ -1,0 +1,828 @@
+{
+ "group": {
+  "id": 4861395,
+  "name": "[Valor Designs]"
+ },
+ "owner": {
+  "id": 237043390,
+  "name": "mibbinator"
+ },
+ "items": [
+  {
+   "id": 94310453547561,
+   "assetType": 12,
+   "name": "all white",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-fbfefc38dd258675b42950207f438458/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 123050494967431,
+   "assetType": 11,
+   "name": "all white",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-0897378a3ae0871397717d747ae26907/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10688184530,
+   "assetType": 2,
+   "name": "I'm Upgrading! (Trade Hangout T-Shirt)",
+   "price": 2,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-158bd36137662650714378b6c1790c0c/150/150/Tshirt/Png/noFilter"
+  },
+  {
+   "id": 82149794615810,
+   "assetType": 11,
+   "name": "Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-696610878c5c4ebdfb0755248f4f2978/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 93863170194868,
+   "assetType": 12,
+   "name": "Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-42660609fd7dcdcf9f442eb00d24a34c/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 110961473496542,
+   "assetType": 11,
+   "name": "Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-cda1cf41822118148bf4c2d2a5a773c3/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 88850290474320,
+   "assetType": 12,
+   "name": "Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-afe7d966437fcdadab96e88480c0fc92/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 95422115024019,
+   "assetType": 11,
+   "name": "Orange Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e7a48fe06dc839eed9ef285edbff7045/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 130151319754295,
+   "assetType": 12,
+   "name": "Orange Suit [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9e0c51c5fbaf2ad7420278c603c5e90b/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 113366284518352,
+   "assetType": 11,
+   "name": "Orange Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e3821ddd844a02ed44b2c53c79300e9f/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 74904479597065,
+   "assetType": 12,
+   "name": "Orange Suit w/ Vest [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-672b95734b61b3fe554bc865a85fd090/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 96134698355314,
+   "assetType": 11,
+   "name": "Orange Suit w/ Vest [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-36e042d564b447a4defa311b8bbc1e62/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 104318451804163,
+   "assetType": 8,
+   "name": "Cute Simple Chibi Face",
+   "price": 1,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e93c3e5f5ff667a504bdea62a3103725/150/150/Hat/Png/noFilter"
+  },
+  {
+   "id": 82004785391439,
+   "assetType": 12,
+   "name": "Red Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-45850451b09928ba18ba3a535adb7948/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 127127820695095,
+   "assetType": 11,
+   "name": "Red Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-526d29132b08186553807b05482e82a0/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 108260829633262,
+   "assetType": 12,
+   "name": "Yellow Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-4bb27843e12b3c632226f53882eb3d7f/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 135027411898078,
+   "assetType": 11,
+   "name": "Yellow Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b057d880938c7b5e84bbdb502bb7de14/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 101424592384294,
+   "assetType": 12,
+   "name": "Nightmare Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-5320b161fcfda26f74988e1717856ba6/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 114090553008598,
+   "assetType": 11,
+   "name": "Nightmare Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-f83a68b6cfd333b32b08b54a4780b0df/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 91383605914625,
+   "assetType": 12,
+   "name": "Green Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-67d454a637579fed6f7c1a2bad448916/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 106842327328778,
+   "assetType": 11,
+   "name": "Green Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-90e64421ea21175ba9b371f0882e7579/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 117996447155475,
+   "assetType": 12,
+   "name": "Blue Suit [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b3db6e4145118e078c4676b7a4542f4b/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 77676991217450,
+   "assetType": 11,
+   "name": "Blue Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b3306e0d2a945917a8282159e0d1de4f/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 99585306920142,
+   "assetType": 12,
+   "name": "All White Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-8ee6bbd301887f33592f066fd814d80e/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 122365110192107,
+   "assetType": 11,
+   "name": "All White Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-721043530bed9939066101e1f4b2b280/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 73293349544712,
+   "assetType": 12,
+   "name": "All Black Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9698b62194a56c6479c19683a37f453c/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 98028373539133,
+   "assetType": 11,
+   "name": "All Black Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-2464f12df5689f9d4a07e4e4eba61bcb/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 81451566894490,
+   "assetType": 2,
+   "name": "chill guy who lowkey dont give a crap",
+   "price": 143,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-29051774e434f99b51d04e3021d6466e/150/150/Tshirt/Png/noFilter"
+  },
+  {
+   "id": 17277976561,
+   "assetType": 11,
+   "name": "y2kboywithtanktop",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-df9a6dcbe474301140899be981b3664c/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 15019944617,
+   "assetType": 12,
+   "name": "christmas red&black plaid pajama pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-59647efd6d503cb540da46de0a453747/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277977845,
+   "assetType": 12,
+   "name": "y2k emo chain cyber vamp black jeans pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-5b4fa667181dbb53224aea299400f5b8/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277981859,
+   "assetType": 12,
+   "name": "y2k emo cyber vamp grey cargo pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9a4e477b69f2685ace3bbeb40c017215/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277979367,
+   "assetType": 12,
+   "name": "y2k dragon emo grunge cyber vamp black pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-7eb15687821df3c88685bdebab78adca/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277945730,
+   "assetType": 12,
+   "name": "y2k emo cyber vamp aesthetic chain vintage pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e61035090d69d2297f950f33ec45cde5/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277944282,
+   "assetType": 12,
+   "name": "y2k grey cargo pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-00daac2b575d9ed86be9f54e2e0f51d7/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277942985,
+   "assetType": 12,
+   "name": "y2k rhinestone black emo cyber vamp pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-120b29f680ba8b7f0d91c5a7efdfda4c/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277941868,
+   "assetType": 12,
+   "name": "y2k skull black emo cyber vamp pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-10e07ca5ae24e0cda30bf4f15d0af02d/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 17277973774,
+   "assetType": 11,
+   "name": "y2k gyaru goth crop top",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-28727d260b95bfc8e2ce696fd225ec5c/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 17277972485,
+   "assetType": 11,
+   "name": "y2k gyaru goth emo cyber vamp girl shirt w/ jacket",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-02d93fe20aa304cc085ca37df95ab5ac/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 17277971075,
+   "assetType": 11,
+   "name": "y2k black emo goth vamp shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b63e3aa130210e50244bd5aa2e6ca4e3/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 17277931403,
+   "assetType": 11,
+   "name": "Gojo [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-3a2af60905b77747a62c1432064aca3c/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 17277934136,
+   "assetType": 12,
+   "name": "Gojo [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-559b2cd47bead1ce894ef7f7289304bd/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 16318411495,
+   "assetType": 11,
+   "name": "Black Gangster Shirt w/ tattoos",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-243b79d7b646a4967c8af031d2725346/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 16181979848,
+   "assetType": 11,
+   "name": "MM2 Is My Life Shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-095305d1c4ba04dcaabc0965762f1cf7/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 16181976042,
+   "assetType": 11,
+   "name": "I Love MM2 Shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-2aa58cf1a99d661daf653e0442d00507/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 16181927351,
+   "assetType": 11,
+   "name": "Vampire Epic Face Shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-3b6d51bf84866f761659346a3d4f7dfb/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 16181922334,
+   "assetType": 12,
+   "name": "Violet Valk Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-0d6edc1b084058817ddbe5a9a1f5f431/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 16181919926,
+   "assetType": 11,
+   "name": "Violet Valk Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9977e2587f9fc6225a242047f8979fae/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 16170958409,
+   "assetType": 12,
+   "name": "Deadly Dark Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-58ebafdff9f4b2d8715e2fc60dd68b20/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 16170955442,
+   "assetType": 11,
+   "name": "Deadly Dark Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-754e80d7519d4d5e428d457e15892581/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 15269235671,
+   "assetType": 12,
+   "name": "Pink Crystal Suit",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-777dcd7177c282f1404bb43d1129b1a9/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 15269230906,
+   "assetType": 11,
+   "name": "Pink Crystal Suit",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-2cd61188026cd6e8afdab21eba69660d/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 15019942367,
+   "assetType": 12,
+   "name": "halloween black&orange plaid pajama pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b50ddb3e3e120a8538fd2994d8707ab7/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 15019937117,
+   "assetType": 12,
+   "name": "black&orange halloween pumpkin suit pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-98fb20033001fe1cd38ca9d9f940524e/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 15019933310,
+   "assetType": 11,
+   "name": "black&orange halloween pumpkin suit",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-4b7eb55eaf14657b5f7fa4ffee0138c8/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 15019866893,
+   "assetType": 12,
+   "name": "black&orange halloween pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-7315d979c4f4d996debe83cbab650cb5/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 15019871687,
+   "assetType": 11,
+   "name": "halloween cardigan shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9303c1b2d8b39d6e7ed7ded1fd0a1a8b/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 15019861155,
+   "assetType": 11,
+   "name": "black halloween pumpkin hoodie",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-1bdf95b385ee0f0687d32f780af5fb4b/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 14620296196,
+   "assetType": 12,
+   "name": "Purple Warlord [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-18bc2d4fadc160ae57e036a6f0b067e6/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 14620293830,
+   "assetType": 11,
+   "name": "Purple Warlord [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-1d7a8c7f140468a38a94a7c564051b09/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 14400610321,
+   "assetType": 12,
+   "name": "full black pants",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-bb80df425a69bc02c38971741fcfce54/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 14400607677,
+   "assetType": 11,
+   "name": "full black shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-8fb85b48e5152cb086165763f1cc18e9/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 11953321729,
+   "assetType": 12,
+   "name": "Blank Christmas Pants [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-99124b9c61f42b2d47c27d707295e82b/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 11953316270,
+   "assetType": 11,
+   "name": "Blank Christmas Sweater [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-4b4a2cbdca9a3046aea0be56c2b21323/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 11696794288,
+   "assetType": 12,
+   "name": "Overseer Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-1bfa9c36683878ae0cd861258649358c/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 11696792938,
+   "assetType": 11,
+   "name": "Overseer Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-f754220d1d20f7c5608bd2e3f2ad0804/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 11360283004,
+   "assetType": 11,
+   "name": "halloween spooky vintage pumpkin girl cardigan y2k",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-aee3b7a1e785ae117b31d5487e979395/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 11360104566,
+   "assetType": 11,
+   "name": "halloween y2k crop top",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-c5040e2492b05d5e392e6ea102e08a58/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 11360014386,
+   "assetType": 11,
+   "name": "halloween spooky vintage girl bardot",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-2656e8f99870d3bee669d91b7472d36a/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10771624234,
+   "assetType": 12,
+   "name": "Vector Tracksuit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-ca18dd9271d5c45c5a4614483a96d553/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10771621522,
+   "assetType": 11,
+   "name": "Vector Tracksuit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-455ffcf8f38e5c5d2ad14feba86943ca/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10750167966,
+   "assetType": 11,
+   "name": "Stanford Law Hoodie",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9fdbeb4861239705ddf95b63d41af368/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10749244201,
+   "assetType": 12,
+   "name": "Orange Suit [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-949cdfa58626229afc6a19f64375e350/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10749234992,
+   "assetType": 11,
+   "name": "Orange Suit [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b97c4bc21231063e0b8ee2b20b76c9b5/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10749181304,
+   "assetType": 12,
+   "name": "Neapolitan Crown Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-69b32fc82bfa789b41b5af0e4074d900/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10749178380,
+   "assetType": 11,
+   "name": "Neapolitan Crown Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b56936902b4e1ddba7227ad13d768fb5/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10749092364,
+   "assetType": 12,
+   "name": "Innovator Awards Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e00c4040f650be599dbe01524d794158/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10749087947,
+   "assetType": 11,
+   "name": "Innovator Awards Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b461f57c235c0008f735f57a30c1d3a9/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10748877157,
+   "assetType": 12,
+   "name": "Overseer Knight [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-4f6032da2ac85140e4b9cf1517eeafd1/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10748873171,
+   "assetType": 11,
+   "name": "Overseer Knight [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-4a741ce31a63d301a5372ab45d1aa6c1/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10676365276,
+   "assetType": 12,
+   "name": "Hood of the International Buildmasters Knight [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-286c0bfe91225d7dbfc7002ecb0290b5/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10676362232,
+   "assetType": 11,
+   "name": "Hood of the International Buildmasters Knight [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-3bd19cea151bd594cd4c5770c4e2eb82/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10516705936,
+   "assetType": 11,
+   "name": "Valor Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b7513472a6ef5674e06100fc8e934d9a/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10516710251,
+   "assetType": 12,
+   "name": "Valor Suit Pants [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-46793811ff8e4b094f315b02c0029063/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380499080,
+   "assetType": 12,
+   "name": "Hood of the International Buildmaster Superhero[-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-6414159c8075682ebd95d865077e3b36/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380493972,
+   "assetType": 11,
+   "name": "Hood of the International Buildmaster Superhero[+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-40f3b156293bd2c1d0cae21f3a15d19d/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380526941,
+   "assetType": 12,
+   "name": "Chill Backpack Long-Sleeve [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9d626da9e8e59f1f35236f2174bc85c4/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380514151,
+   "assetType": 12,
+   "name": "Cool Purple Suit [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-5794fb7135481abd0f0bc3aa4b66bdb4/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380509020,
+   "assetType": 11,
+   "name": "Cool Purple Suit [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-6f8dbeb9067b451539d79341b795a86d/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380470564,
+   "assetType": 12,
+   "name": "Homer Simpson [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9c843c429333a3d6f884810830be6730/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380465523,
+   "assetType": 11,
+   "name": "Homer Simpson [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-7c12139eb61ec25255fde73edb7aca7d/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10382779094,
+   "assetType": 11,
+   "name": "Gfuel Branded Ur Bad T-Shirt",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9a20f696c609d61b812c3237da2e5f25/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10381158711,
+   "assetType": 12,
+   "name": "Blue Jeans",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-7bd0d079400a9937702151f7fca52b9c/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10381135489,
+   "assetType": 11,
+   "name": "Valor Designs Patron Shirt",
+   "price": 450,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-e963a41cdcc311f374a4fb9531ce86cd/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380811168,
+   "assetType": 12,
+   "name": "Official Valor Hoodie/Vest Pants [-]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-ace31b27ae191627c146af2924210374/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380578802,
+   "assetType": 11,
+   "name": "Official Valor Hoodie",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-7607390615dc0ef3b47e52494424e2e6/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380586161,
+   "assetType": 11,
+   "name": "Official Valor Vest",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b5504605949fbe3c2d5a0063a8717e41/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380533827,
+   "assetType": 11,
+   "name": "Blue/Cyan Top Hat Hoodie",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-b3492f0ae854bb221a08bd17c7deb389/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380550584,
+   "assetType": 12,
+   "name": "Red Knight [-]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-21ec596a7bbeac5189d96d0f2f3b2294/150/150/Pants/Png/noFilter"
+  },
+  {
+   "id": 10380546895,
+   "assetType": 11,
+   "name": "Red Knight [+]",
+   "price": 5,
+   "onSale": true,
+   "thumb": "https://tr.rbxcdn.com/180DAY-f759de75e01462848b579c36adb90332/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380559927,
+   "assetType": 11,
+   "name": "Nice Blue Shirt w/ Vest [+]",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-9696490e765acede8b9ec9910dc47bde/150/150/Shirt/Png/noFilter"
+  },
+  {
+   "id": 10380479878,
+   "assetType": 11,
+   "name": "Nice Maroon Hoodie",
+   "price": 5,
+   "onSale": false,
+   "thumb": "https://tr.rbxcdn.com/180DAY-241d6e3286804ef60ab7bcfe4e66aca6/150/150/Shirt/Png/noFilter"
+  }
+ ]
+}

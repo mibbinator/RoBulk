@@ -73,7 +73,8 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
     const list = items.filter((item) => {
       const eff = effective(item, edits.get(item.key));
       if (q && !eff.name.toLowerCase().includes(q) && !String(item.id).includes(q)) return false;
-      return filter === "all" || (filter === "onSale" ? eff.onSale : !eff.onSale);
+      // Filter on the saved status, so staged items stay in view for review until saved.
+      return filter === "all" || (filter === "onSale" ? item.onSale : !item.onSale);
     });
     const salesOf = (i: SellableItem) => perItemSales?.get(i.key);
     const sorters: Record<SortKey, ((a: SellableItem, b: SellableItem) => number) | null> = {
