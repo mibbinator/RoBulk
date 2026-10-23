@@ -4,6 +4,14 @@ Bulk tools for the Roblox Creator Dashboard. Price, rename, schedule and put ite
 
 Works for clothing and UGC sellers and for game developers, on items owned by you or by your groups.
 
+![RoBulk staging a whole store back on sale](store/screenshots/1-restock.png)
+
+- [What it does](#what-it-does)
+- [Installing](#installing)
+- [How to use](#how-to-use)
+- [Tips and troubleshooting](#tips-and-troubleshooting)
+- [Development](#development)
+
 ## What it does
 
 **Items**
@@ -32,26 +40,162 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - A snapshot of your prices and sale status is taken automatically once a day and before every save, so you can put everything back the way it was (handy when a lapsed Premium subscription takes a group's clothing off sale)
 - Activity log of everything saved through RoBulk, exportable to .csv
 
-Only groups where your role can manage items or experiences show up in the creator picker, and earnings only appear if you can view the group's revenue.
-
 ## Installing
 
-Store listings are on the way. Until then:
+The Chrome Web Store and Firefox Add-ons listings are on the way. Until then you can build it yourself (you'll need [Node.js](https://nodejs.org/) 22 or newer):
 
-1. `npm install` and `npm run build`
-2. Chrome / Edge: open `chrome://extensions`, turn on Developer mode, click **Load unpacked** and choose `dist`
-3. Firefox: run `npm run package`, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and pick `dist-firefox/manifest.json`
+```sh
+git clone https://github.com/mibbinator/RoBulk.git
+cd RoBulk
+npm install
+npm run package
+```
 
-Then open [create.roblox.com](https://create.roblox.com/dashboard/creations) and click **Bulk Edit** in the bottom-right corner.
+- **Chrome or Edge:** open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked** and choose the `dist` folder.
+- **Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and pick `dist-firefox/manifest.json`. Firefox removes temporary add-ons when it closes.
+
+## How to use
+
+### 1. Open RoBulk
+
+1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
+2. Click the blue **Bulk Edit** button in the bottom-right corner. If you don't see it, refresh the page.
+3. Use the two menus at the top right:
+   - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. When the dashboard address includes a group (`?groupId=…`), RoBulk starts on that group.
+   - **Experience:** which game's passes, developer products and badges to show. Your avatar items show no matter which experience is picked.
+
+Press **Esc** or click **✕** to close. If you have unsaved changes, RoBulk asks first.
+
+### 2. The golden rule: nothing changes until you click Save
+
+Every action in the Items tab only *stages* a change. Changed rows are highlighted and show the old value next to the new one (for example `Off sale → On sale`, or `was 5` under a new price). The Items tab shows how many changes are waiting.
+
+- **Save N changes** sends them to Roblox, one item at a time.
+- **Discard changes** throws them all away.
+- While saving, each row gets a ✓ or a red message explaining what Roblox said. Failed rows stay staged so you can fix them and click Save again. **Stop** cancels the rest.
+
+Before every save RoBulk records the old values, so any save can be undone from the [History tab](#8-undo-a-save-or-restore-your-store-history).
+
+### 3. Put a lot of items on (or off) sale
+
+This is the "my whole store went off sale" fix.
+
+1. In the **Items** tab, click **Off sale** in the filter.
+2. Tick the checkbox next to a category name (for example **Classic Shirts**) to select every item in it, or click **Select all** to select everything shown. You can also tick rows one by one, and shift-click to select a range.
+3. Click **Put on sale** at the bottom.
+4. Look over the highlighted rows, then click **Save N changes**.
+
+**Take off sale** works the same way. The filter goes by each item's saved status, so staged items stay in view until you save.
+
+### 4. Change prices
+
+- **One item:** type in the row's price box and press Enter.
+- **Many items at the same price:** select them, type the price in the box at the bottom, and click **Set price**.
+- **Raise or lower by a rule:** select items, then **More → Price rule**. Pick a change (set to, raise or lower by % or Robux), how to round (whole Robux, ending in 9, ending in 99, multiples of 5 or 10), and an optional floor and ceiling. The preview shows old → new prices before you stage anything. Raises always round up and discounts always round down, so a raise never lowers a price.
+
+Under each price, *you get R$X* shows roughly what you keep from one sale after Roblox's share.
+
+![Price rule dialog with a preview of the new prices](store/screenshots/3-price-rules.png)
+
+### 5. Schedule a sale, rename, and other bulk actions
+
+All of these are in the **More** menu at the bottom of the Items tab and apply to the selected items:
+
+- **Schedule a sale:** pick when items go on sale and, optionally, when they come off. Roblox handles the timing, so your computer doesn't need to be on. Avatar items only (Roblox doesn't support schedules for passes and products). *Remove existing schedule* clears one.
+- **Rename:** add a prefix (like `[VD] `), add a suffix, find and replace, or use a template. Templates understand `{name}` (current name), `{n}` (1, 2, 3… in selection order), `{price}` and `{id}`. For example, `{name} #{n}` turns three items into "Suit #1", "Suit #2", "Suit #3".
+- **Edit descriptions:** the same options. In templates, `{current}` stands for the existing description, so a template of `{current}`, a blank line, then `More at our group!` adds that line to the end of every description.
+- **Turn regional pricing on/off.**
+- **Turn managed pricing on/off:** game passes and developer products only. You can also click the *Managed pricing* chip on a single row.
+- **Take a snapshot now:** saves the current state to History without changing anything.
+
+### 6. Work in a spreadsheet
+
+1. **Import / export → Export all items (.csv)** (or *Export selected*).
+2. Open the file in Excel or Google Sheets and edit the `price`, `on_sale` (yes/no), `name` or `description` columns. Leave `type` and `id` alone; that's how rows are matched back up.
+3. **Import / export → Import spreadsheet (.csv)** and pick the file. Changed cells are staged in the Items tab and a summary lists anything that couldn't be read. Review, then **Save**.
+
+### 7. See what you're earning
+
+![Earnings report](store/screenshots/2-earnings.png)
+
+Open the **Earnings report** tab. It loads your sales for the period you choose (**Last 7 / 30 / 90 days**) and shows:
+
+- earned, number of sales, average per sale, unique buyers, pending Robux and your current balance, with the change from the previous period
+- daily earnings, earnings by category, your top items, sales per day and your top buyers
+
+Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
+
+For a single item, click **View sales** under its name in the Items tab (once sales are loaded it reads *12 sold · R$84*). The Items tab's **Sort** menu then also offers *Best sellers* and *Most earned*.
+
+### 8. Undo a save or restore your store (History)
+
+The **History** tab has two views:
+
+- **Snapshots & undo.** RoBulk takes a snapshot of your prices and sale status once a day when you open it, and right before every save. Click **Restore** on any snapshot to stage those old values in the Items tab, then review and **Save**. If a group's clothing is ever pushed off sale (for example when the owner's Premium lapses), restore the last snapshot from before it happened.
+- **Activity log.** Every change saved through RoBulk, with old and new values and whether it worked. Tick *Failures only* to find problems, or export it to .csv.
+
+Snapshots and the log live in your browser only.
+
+### 9. Create game passes and developer products in bulk
+
+![Creating developer products from a template](store/screenshots/4-create.png)
+
+1. Pick the experience at the top, then open **Create & copy → Bulk create**.
+2. Choose **Developer products** or **Game passes**.
+3. Click a template (*Donation tiers*, *Currency packs*, *Starter game passes*), or open **Or generate a numbered series** to make things like "Crate 1…10" with stepped prices. Use **+ Add row** for one-offs.
+4. Edit any name, description, price or on-sale box in the table, and optionally choose one icon for all of them.
+5. Click **Create N developer products**. Each row shows ✓ when it's created.
+
+Roblox allows at most 50 game passes on sale per experience.
+
+### 10. Copy passes and products to another game
+
+1. **Create & copy → Copy between experiences.**
+2. Pick **Copy from** and **Copy to**, tick the items, and choose whether to copy icons and whether the copies should start off sale.
+3. Click **Copy**.
+
+### 11. Use your ids in scripts
+
+With an experience selected, **Import / export → Export pass & product ids as Lua** gives you a ready-made table:
+
+```lua
+return {
+	GamePasses = {
+		VIP = 123456789, -- VIP
+	},
+	DeveloperProducts = {
+		Donate100Robux = 987654321, -- Donate 100 Robux
+	},
+}
+```
+
+Copy it into a ModuleScript (for example `ReplicatedStorage.MonetizationIds`) and require it from your scripts. Tick *Include prices* to get `{ Id = …, Price = … }` entries instead.
+
+### 12. Manage badges
+
+![Badge management](store/screenshots/5-badges.png)
+
+Open the **Badges** tab with an experience selected. The chart shows your most-awarded badges, and each row shows awards, win rate and awards yesterday. Select badges and use **Enable**, **Disable** or **Rename…** (or click a badge's *Enabled/Disabled* pill to toggle it), then **Save**.
+
+## Tips and troubleshooting
+
+- **The Bulk Edit button isn't there.** Refresh the dashboard tab. If you just installed or updated RoBulk, reload it on the extensions page first.
+- **A group is missing from the creator menu.** Your role in that group needs permission to manage the group's items or experiences. Ask the group owner.
+- **A row shows a red message after saving.** That's Roblox's own reason, for example a price below the minimum, a missing permission, or a group that lost its owner's Premium. Fix it and save again; only the failed rows are sent.
+- **"Limited items aren't supported yet."** Limiteds have extra settings (stock, resale) that RoBulk doesn't touch, so they're skipped. Edit them on the dashboard.
+- **An item never put on sale is missing.** RoBulk lists avatar items from Roblox's catalog, which can leave out items that were never released.
+- **Prices look out of date right after a save.** Roblox's catalog takes a little while to catch up. RoBulk shows your saved values right away; a later Refresh may briefly show the old ones.
+- **Busy stores:** the earnings report reads up to your latest 6,000 sales per load, and says so if the period goes further back than that.
 
 ## Development
 
 ```sh
-npm run dev        # rebuild dist/ on every change
-npm test           # unit + UI tests
-npm run preview    # the panel on fake data: open dist-preview/index.html
-npm run package    # store zips in release/ for Chrome and Firefox
-npm run icons      # regenerate public/icons
+npm run dev           # rebuild dist/ on every change
+npm test              # unit and UI tests
+npm run preview       # the panel on sample data: open dist-preview/index.html
+npm run package       # store zips in release/ for Chrome and Firefox
+npm run store-assets  # re-render the store screenshots and promo images
+npm run icons         # regenerate public/icons
 ```
 
 `npm run preview` is the quickest way to work on the UI without touching a real account. Add `?tab=earnings` (or `create`, `badges`, `history`) and `&theme=light` to the URL.
