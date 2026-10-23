@@ -105,6 +105,16 @@ export async function fakeFetch(input: RequestInfo | URL, init: RequestInit = {}
   const method = init.method ?? "GET";
   await new Promise((r) => setTimeout(r, 40));
 
+  // ?unpublished: two shirts that were approved but never published.
+  const unpublished = new URLSearchParams(location.search).has("unpublished");
+  if (url.includes("/creations/get-assets")) {
+    const drafts = [{ assetId: 501, name: "Camo Suit [+]" }, { assetId: 502, name: "Navy Blazer [+]" }];
+    return json({ data: unpublished && url.includes("assetType=Shirt") ? drafts : [], nextPageCursor: null });
+  }
+  if (url.includes("/creations/get-asset-details")) {
+    const ids: number[] = JSON.parse(String(init.body)).AssetIds;
+    return json(ids.map((assetId) => ({ assetId, name: "", status: "ReviewApproved" })));
+  }
   if (method !== "GET") return new Response(null, { status: 200 });
   if (url.includes("/users/authenticated")) return json({ id: store.owner.id, name: store.owner.name, displayName: store.owner.name });
   if (url.includes("/groups/roles")) return json({ data: [{ group: { id: store.group.id, name: store.group.name }, role: { rank: 255 } }] });

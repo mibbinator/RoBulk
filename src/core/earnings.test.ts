@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SellableItem } from "../api/types";
-import { byMonth, change, dayRange, summarize, type SaleTransaction } from "./earnings";
+import { bucketRange, change, summarize, type SaleTransaction } from "./earnings";
 
 const sale = (over: Partial<SaleTransaction> & { day: number; hour?: number }): SaleTransaction => ({
   id: Math.random().toString(36),
@@ -83,31 +83,35 @@ describe("summarize", () => {
     expect(s.byCategory.at(-1)).toMatchObject({ label: "Everything else" });
     expect(s.byCategory.reduce((sum, c) => sum + c.robux, 0)).toBe(s.totalRobux);
   });
+
+  it("groups by week when asked, per item too", () => {
+    // 1 October 2026 is a Thursday, so later weeks start on Mondays the 5th and 12th.
+    const s = summarize([sale({ day: 1 }), sale({ day: 4 }), sale({ day: 6 })], from, new Date(2026, 9, 13), items, "week");
+
+    expect(s.bucket).toBe("week");
+    expect(s.daily.map((d) => [d.date, d.robux, d.sales])).toEqual([
+      ["2026-10-01", 14, 2],
+      ["2026-10-05", 7, 1],
+      ["2026-10-12", 0, 0],
+    ]);
+    expect(s.perItem.get("avatar:101")?.daily.map((d) => d.sales)).toEqual([2, 1, 0]);
+  });
 });
 
 describe("helpers", () => {
   it("lists days inclusively", () => {
-    expect(dayRange(new Date(2026, 9, 30), new Date(2026, 10, 1))).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+    expect(bucketRange(new Date(2026, 9, 30), new Date(2026, 10, 1), "day").starts).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+  });
+
+  it("starts weeks on Mondays, with the first one at the start date", () => {
+    const { starts, indexOfDay } = bucketRange(new Date(2026, 9, 1), new Date(2026, 9, 13), "week");
+    expect(starts).toEqual(["2026-10-01", "2026-10-05", "2026-10-12"]);
+    expect([indexOfDay.get("2026-10-04"), indexOfDay.get("2026-10-05"), indexOfDay.get("2026-10-13")]).toEqual([0, 1, 2]);
   });
 
   it("computes period-over-period change", () => {
     expect(change(150, 100)).toBe(0.5);
     expect(change(0, 0)).toBe(0);
     expect(change(5, 0)).toBeNull();
-  });
-});
-
-describe("byMonth", () => {
-  it("rolls days up into months", () => {
-    expect(
-      byMonth([
-        { date: "2026-09-29", robux: 5, sales: 1 },
-        { date: "2026-09-30", robux: 0, sales: 0 },
-        { date: "2026-10-01", robux: 7, sales: 2 },
-      ]),
-    ).toEqual([
-      { date: "2026-09", robux: 5, sales: 1 },
-      { date: "2026-10", robux: 7, sales: 2 },
-    ]);
   });
 });

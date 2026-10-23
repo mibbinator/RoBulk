@@ -26,6 +26,7 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - Earned, sales, average per sale, unique buyers, pending Robux and current balance, compared with the previous period
 - Daily earnings, earnings by category, top items, sales per day and top buyers, for the last 7, 30 or 90 days or all time
 - Per-item sales and earnings from the Items tab
+- Sales load in the background when RoBulk opens, with a progress bar at the bottom of the panel
 - Every chart has a table view, and the report exports to .csv
 
 **Create & copy**
@@ -39,12 +40,15 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - A snapshot of your prices and sale status is taken automatically once a day and before every save, so you can put everything back the way it was (handy when a lapsed Premium subscription takes a group's clothing off sale)
 - Activity log of everything saved through RoBulk, exportable to .csv
 
+**Options**
+- Switch off background sales loading, saved sales, the per-sale earnings lookup or daily snapshots
+
 ## How to use
 
 ### 1. Open RoBulk
 
 1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
-2. Click the blue **Bulk Edit** button in the bottom-right corner. If you don't see it, refresh the page.
+2. Click **RoBulk** in the dashboard's left sidebar, just below **All tools**. If the sidebar is hidden (in a narrow window, for example), a blue **RoBulk** button appears in the bottom-right corner instead. If you don't see either, refresh the page.
 3. Use the two menus at the top right:
    - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. RoBulk opens on whichever group you have selected in the Creator Dashboard (or on you, if you're viewing your own creations).
    - **Experience:** starts on *No experience selected*. Pick a game to also show its passes and developer products, and to use the Create & copy and Badges tabs. Your avatar items show either way.
@@ -110,7 +114,9 @@ Open the **Earnings report** tab. It loads your sales for the period you choose 
 
 Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
 
-**All time** adds up every sale since your first one, with monthly charts. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones.
+**All time** adds up every sale since your first one, with weekly charts once your history is longer than 90 days. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones. Picking a longer range, or **Keep loading**, carries on from where the last load stopped instead of starting from your newest sale again.
+
+RoBulk starts loading sales in the background as soon as you open it, so the report is usually ready by the time you click the tab. While it loads, a bar at the bottom of the panel shows progress and has a **Stop** button. You can turn background loading off in the **Options** tab.
 
 Sales are loaded once per visit to the dashboard: switching ranges, closing and reopening RoBulk, or switching creators and back all reuse what's already loaded without asking Roblox again. Click **Refresh** whenever you want the latest sales.
 
@@ -166,13 +172,17 @@ Copy it into a ModuleScript (for example `ReplicatedStorage.MonetizationIds`) an
 
 Open the **Badges** tab with an experience selected. The chart shows your most-awarded badges, and each row shows awards, win rate and awards yesterday. Select badges and use **Enable**, **Disable** or **Rename…** (or click a badge's *Enabled/Disabled* pill to toggle it), then **Save**.
 
+### 13. Change what RoBulk does on its own (Options)
+
+The **Options** tab lets you switch off things RoBulk does on its own: loading sales in the background, remembering sales between visits (turning it off deletes them, and it shows how much space they take), looking up what you get per sale, and the daily snapshot. Settings are saved in your browser and apply to every creator.
+
 ## Tips and troubleshooting
 
-- **The Bulk Edit button isn't there.** Refresh the dashboard tab, especially right after installing or updating RoBulk.
+- **RoBulk isn't in the sidebar.** Refresh the dashboard tab, especially right after installing or updating RoBulk.
 - **A group is missing from the creator menu.** Your role in that group needs permission to manage the group's items or experiences. Ask the group owner.
 - **A row shows a red message after saving.** That's Roblox's own reason, for example a price below the minimum, a missing permission, or a group that lost its owner's Premium. Fix it and save again; only the failed rows are sent.
 - **"Limited items aren't supported yet."** Limiteds have extra settings (stock, resale) that RoBulk doesn't touch, so they're skipped. Edit them on the dashboard.
-- **An item never put on sale is missing.** RoBulk lists avatar items from Roblox's catalog, which can leave out items that were never released.
+- **An item never put on sale is missing.** RoBulk lists avatar items from Roblox's catalog, which only has published items. Classic clothing that was uploaded but never published is listed in a warning at the top of the Items tab instead: Roblox charges a R$10 publishing fee for each one, and RoBulk never spends Robux for you, so publish them on the dashboard first.
 - **Prices look out of date right after a save.** Roblox's catalog takes a little while to catch up. RoBulk shows your saved values right away; a later Refresh may briefly show the old ones.
 - **All time is slow the first time.** Roblox only hands out sales history a page at a time, newest first, so a store with years of sales takes a few minutes to load once. Later loads only fetch what's new.
 
@@ -196,11 +206,11 @@ Roblox has no bulk endpoint, so RoBulk sends one request per item through your e
 - **Avatar items** are listed with the public catalog search. Before saving, RoBulk reads the item's full sale settings (`GET itemconfiguration.roblox.com/v1/items`) and sends them back unchanged apart from what you edited (`PATCH /v1/collectibles/{collectibleItemId}`), because that endpoint replaces every setting at once. Renames use `/v1/collectibles/update-item-display-information`. Limited items are skipped.
 - **Game passes and developer products** use Roblox's documented [game pass](https://create.roblox.com/docs/cloud/reference/features/game-passes) and [developer product](https://create.roblox.com/docs/cloud/reference/features/developer-products) endpoints, sending only the fields that changed.
 - **Badges** use `PATCH badges.roblox.com/v1/badges/{id}`.
-- **Earnings** come from your sale transactions (`economy.roblox.com/v2/{users|groups}/{id}/transactions`), cached in `chrome.storage.local`. Each load re-reads only the last 35 days (sales stay pending for up to 30) plus anything older that isn't cached yet.
+- **Earnings** come from your sale transactions (`economy.roblox.com/v2/{users|groups}/{id}/transactions`), cached in `chrome.storage.local`. Each load fetches only sales newer than the last load, going back further only as far as the oldest sale still marked pending (at most 35 days), plus anything older that isn't cached yet. RoBulk keeps Roblox's page cursor from where each load stopped, so going further back resumes from there; if Roblox no longer accepts an old cursor, it pages from the newest sale instead. Pages are fetched back to back, and slow down only after Roblox says to.
 
 ## Privacy
 
-RoBulk has no servers, analytics or accounts. It only talks to Roblox, using the login you already have, and keeps snapshots and the activity log in your browser's extension storage. See [PRIVACY.md](PRIVACY.md).
+RoBulk has no servers, analytics or accounts. It only talks to Roblox, using the login you already have, and keeps snapshots, the activity log and your saved sales in your browser's extension storage. See [PRIVACY.md](PRIVACY.md).
 
 ## License
 

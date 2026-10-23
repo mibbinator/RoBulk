@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { CLASSIC_PUBLISHING_FEE, type UnpublishedItem } from "../api/creations";
 import type { SellableItem } from "../api/types";
 import { CATEGORIES, categoryFor, type CategoryId } from "../core/categories";
 import { csvToPatches, toCsv } from "../core/csv";
@@ -39,6 +40,42 @@ function itemLink(item: SellableItem): string {
     case "devProduct":
       return `https://create.roblox.com/dashboard/creations/experiences/${item.universeId}/developer-products/${item.id}/configure`;
   }
+}
+
+/** Clothing the catalog doesn't list yet because publishing it costs Robux. */
+function UnpublishedWarning({ items }: { items: UnpublishedItem[] }) {
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  const one = items.length === 1;
+  return (
+    <div class="rb-banner rb-unpublished" role="note">
+      <p>
+        <strong>{one ? "1 clothing item isn't published yet" : `${items.length} clothing items aren't published yet`}</strong>, so{" "}
+        {one ? "it isn't" : "they aren't"} listed here. Roblox charges a R${CLASSIC_PUBLISHING_FEE} publishing fee for each one
+        {one ? "" : ` (${robux(items.length * CLASSIC_PUBLISHING_FEE)} for all of them)`}. RoBulk never spends Robux for you, so publish them from the
+        Creator Dashboard first.{" "}
+        <button class="rb-link-btn" onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide them" : "Show them"}
+        </button>
+        {" · "}
+        <button class="rb-link-btn" onClick={() => setDismissed(true)}>
+          Dismiss
+        </button>
+      </p>
+      {open && (
+        <ul>
+          {items.map((u) => (
+            <li key={u.id}>
+              <a href={`https://create.roblox.com/dashboard/creations/catalog/${u.id}/configure`} target="_blank" rel="noreferrer">
+                {u.name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
@@ -278,20 +315,17 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
         </button>
       </div>
 
-      {creator?.access.earnings && !sales.current && (
+      {/* While sales load, the bar at the bottom of the panel shows progress. */}
+      {creator?.access.earnings && !sales.current && !sales.loading && (
         <div class="rb-strip">
-          {sales.loading ? (
-            <span>{sales.progress}</span>
-          ) : (
-            <>
-              <span>See how many of each item sold and what it earned.</span>
-              <button class="rb-link-btn" onClick={() => ws.loadSales(sales.range)}>
-                {sales.range === "all" ? "Load all-time sales" : `Load sales for the ${rangeLabel(sales.range)}`}
-              </button>
-            </>
-          )}
+          <span>See how many of each item sold and what it earned.</span>
+          <button class="rb-link-btn" onClick={() => ws.loadSales(sales.range)}>
+            {sales.range === "all" ? "Load all-time sales" : `Load sales for the ${rangeLabel(sales.range)}`}
+          </button>
         </div>
       )}
+
+      {ws.unpublished.length > 0 && <UnpublishedWarning items={ws.unpublished} />}
 
       <main class="rb-body">
         {loading && items.length === 0 && <div class="rb-empty">Loading items…</div>}

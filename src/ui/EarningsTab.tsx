@@ -1,6 +1,6 @@
 import { useEffect } from "preact/hooks";
 import type { CategoryId } from "../core/categories";
-import { byMonth, change, type DayPoint, type EarningsSummary } from "../core/earnings";
+import { change, type DayPoint, type EarningsSummary } from "../core/earnings";
 import { AreaChart, BarChart, ChartCard, DoughnutChart, StatTile, compact, robux, type Slice } from "./charts";
 import { Segmented, downloadText, fileSafe } from "./components";
 import { rangeLabel, useWorkspace, type ReportRange } from "./workspace";
@@ -19,15 +19,13 @@ const CATEGORY_SLOT: Record<CategoryId | "otherFold", number> = {
   otherFold: -1,
 };
 
-/** Past this many days, charts show months instead of days. */
-const MONTHLY_AFTER_DAYS = 120;
-
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-const shortMonth = (yyyyMm: string) => new Date(`${yyyyMm}-01T00:00:00`).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+// Weekly charts can span years, so they include the year.
+const weekDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const longDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
-function reportCsv(points: DayPoint[], monthly: boolean, s: EarningsSummary): string {
-  const lines = [`${monthly ? "month" : "date"},robux,sales`, ...points.map((d) => `${d.date},${d.robux},${d.sales}`), "", "item,robux,sales"];
+function reportCsv(points: DayPoint[], weekly: boolean, s: EarningsSummary): string {
+  const lines = [`${weekly ? "week starting" : "date"},robux,sales`, ...points.map((d) => `${d.date},${d.robux},${d.sales}`), "", "item,robux,sales"];
   for (const i of s.topItems) lines.push(`"${i.label.replace(/"/g, '""')}",${i.robux},${i.sales}`);
   return lines.join("\r\n") + "\r\n";
 }
@@ -43,10 +41,10 @@ export function EarningsTab() {
   const s = sales.current;
   const p = sales.previous;
   const allTime = sales.range === "all";
-  const monthly = !!s && s.daily.length > MONTHLY_AFTER_DAYS;
-  const points = s ? (monthly ? byMonth(s.daily) : s.daily) : [];
-  const label = (d: DayPoint) => (monthly ? shortMonth(d.date) : shortDate(d.date));
-  const unit = monthly ? "month" : "day";
+  const weekly = s?.bucket === "week";
+  const points = s?.daily ?? [];
+  const label = (d: DayPoint) => (weekly ? weekDate(d.date) : shortDate(d.date));
+  const unit = weekly ? "week" : "day";
 
   return (
     <>
@@ -79,7 +77,7 @@ export function EarningsTab() {
             <button
               class="rb-btn rb-btn-ghost"
               disabled={!s}
-              onClick={() => s && creator && downloadText(`${fileSafe(creator.name)}-earnings-${allTime ? "all-time" : `${sales.range}d`}.csv`, reportCsv(points, monthly, s), "text/csv")}
+              onClick={() => s && creator && downloadText(`${fileSafe(creator.name)}-earnings-${allTime ? "all-time" : `${sales.range}d`}.csv`, reportCsv(points, weekly, s), "text/csv")}
             >
               Export report (.csv)
             </button>
@@ -124,9 +122,9 @@ export function EarningsTab() {
               <div class="rb-grid">
                 <ChartCard
                   wide
-                  title={monthly ? "Monthly earnings" : "Daily earnings"}
+                  title={weekly ? "Weekly earnings" : "Daily earnings"}
                   subtitle={`Robux credited per ${unit}, after Roblox's share`}
-                  table={{ columns: [monthly ? "Month" : "Date", "Earned", "Sales"], rows: points.map((d) => [d.date, robux(d.robux), d.sales]) }}
+                  table={{ columns: [weekly ? "Week starting" : "Date", "Earned", "Sales"], rows: points.map((d) => [d.date, robux(d.robux), d.sales]) }}
                 >
                   <AreaChart labels={points.map(label)} values={points.map((d) => d.robux)} />
                 </ChartCard>
@@ -152,7 +150,7 @@ export function EarningsTab() {
                 <ChartCard
                   title={`Sales per ${unit}`}
                   subtitle="Number of purchases"
-                  table={{ columns: [monthly ? "Month" : "Date", "Sales"], rows: points.map((d) => [d.date, d.sales]) }}
+                  table={{ columns: [weekly ? "Week starting" : "Date", "Sales"], rows: points.map((d) => [d.date, d.sales]) }}
                 >
                   <BarChart labels={points.map(label)} values={points.map((d) => d.sales)} format={(n) => `${compact(n)} sales`} />
                 </ChartCard>

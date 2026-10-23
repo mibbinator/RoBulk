@@ -75,18 +75,23 @@ function fakeRoblox() {
     if (url.includes("thumbnails.roblox.com")) return json({ data: [] });
     if (url.includes("itemconfiguration.roblox.com/v1/items?")) return json({ item: shirtConfig });
     if (url.includes("economy.roblox.com/v2/users/1/transactions")) {
+      if (url.includes("cursor=older")) return json({ nextPageCursor: null, data: [sale(daysAgo(70), 4, { id: 102, name: "On-sale shirt", type: "Asset" })] });
       return json({
-        nextPageCursor: null,
+        nextPageCursor: "older",
         data: [
           sale(daysAgo(1), 70, { id: 7, name: "VIP", type: "GamePass" }),
           sale(daysAgo(2), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
           sale(daysAgo(3), 4, { id: 102, name: "On-sale shirt", type: "Asset" }, { id: 51, type: "User", name: "buyer2" }),
           sale(daysAgo(40), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
-          sale(daysAgo(70), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
         ],
       });
     }
     if (url.includes("economy.roblox.com/v1/users/1/currency")) return json({ robux: 1234 });
+    // One shirt uploaded and approved but never published.
+    if (url.includes("/v1/creations/get-assets")) {
+      return json({ data: url.includes("assetType=Shirt") ? [{ assetId: 101, name: "Off-sale shirt" }, { assetId: 900, name: "Draft shirt" }] : [] });
+    }
+    if (url.includes("/v1/creations/get-asset-details")) return json([{ assetId: 900, name: "Draft shirt", status: "ReviewApproved" }]);
     if (method === "PATCH") return new Response(null, { status: url.includes("collectibles") ? 200 : 204 });
     return json({ errors: [{ message: `unexpected ${method} ${url}` }] }, 404);
   });
@@ -207,8 +212,9 @@ describe("Shell", () => {
     expect(all.querySelector(".rb-stat-hint")!.textContent).toMatch(/^Since /);
     expect(all.querySelector(".rb-stat-delta")).toBeNull(); // nothing to compare all-time with
 
-    // 7 days came from the sales already loaded; all time needed one fetch for the older history.
+    // 7 days came from the sales already loaded; all time carried on from where 30 days stopped.
     expect(transactionCalls(calls)).toBe(fetches + 1);
+    expect(calls.filter((c) => c.url.includes("/transactions")).at(-1)!.url).toContain("cursor=older");
 
     // Now everything is loaded, so going back to 30 days needs no fetch at all.
     byText(root, ".rb-segmented button", "Last 30 days")!.click();
@@ -268,5 +274,35 @@ describe("Shell", () => {
     expect(byText(root, ".rb-legend li", /Game Passes\s*R\$70/)).toBeTruthy();
     expect(byText(root, ".rb-legend li", /Classic Shirts\s*R\$8/)).toBeTruthy();
     expect(byText(root, "td a", "buyer1")).toBeTruthy();
+  }, 20000);
+  it("loads sales in the background, and the Options tab can switch features off", async () => {
+    const { root, calls } = mount();
+    await waitFor(() => byText(root, ".rb-was", "you get R$1"));
+    // Sales were fetched without opening the Earnings report.
+    await waitFor(() => byText(root, ".rb-meta-btn", /sold/));
+    expect(transactionCalls(calls)).toBeGreaterThan(0);
+
+    byText(root, ".rb-tabs button", "Options")!.click();
+    const perSale = await waitFor(() => byText(root, ".rb-option", /Show what you get per sale/));
+    const box = perSale.querySelector<HTMLInputElement>("input")!;
+    expect(box.checked).toBe(true);
+    box.click();
+
+    byText(root, ".rb-tabs button", "Items")!.click();
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+    expect(byText(root, ".rb-was", /you get/)).toBeUndefined();
+  }, 20000);
+  it("warns about clothing that isn't published yet, since publishing costs Robux", async () => {
+    const { root } = mount();
+    const banner = await waitFor(() => root.querySelector<HTMLElement>(".rb-unpublished"));
+    expect(banner.textContent).toMatch(/1 clothing item isn't published yet/);
+    expect(banner.textContent).toContain("R$10 publishing fee");
+
+    byText(banner, "button", "Show them")!.click();
+    const link = await waitFor(() => byText(root, ".rb-unpublished a", "Draft shirt"));
+    expect(link.getAttribute("href")).toBe("https://create.roblox.com/dashboard/creations/catalog/900/configure");
+
+    byText(banner, "button", "Dismiss")!.click();
+    await waitFor(() => !root.querySelector(".rb-unpublished"));
   }, 20000);
 });

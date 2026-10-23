@@ -8,16 +8,37 @@ import type { Edit } from "./edits";
 export interface StorageLike {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
+  remove(key: string): Promise<void>;
+  /** Stored keys starting with `prefix`. */
+  keys(prefix: string): Promise<string[]>;
+  /** Bytes used by these keys, or null if the browser can't tell. */
+  bytesInUse(keys: string[]): Promise<number | null>;
 }
 
 export function chromeStorage(): StorageLike {
+  const local = chrome.storage.local as chrome.storage.LocalStorageArea & { getKeys?: () => Promise<string[]> };
   return {
     async get(key) {
-      const result = await chrome.storage.local.get(key);
+      const result = await local.get(key);
       return result[key];
     },
     async set(key, value) {
-      await chrome.storage.local.set({ [key]: value });
+      await local.set({ [key]: value });
+    },
+    async remove(key) {
+      await local.remove(key);
+    },
+    async keys(prefix) {
+      // getKeys is newer (Chrome 130); older browsers have to read everything once.
+      const all = local.getKeys ? await local.getKeys() : Object.keys(await local.get(null));
+      return all.filter((k) => k.startsWith(prefix));
+    },
+    async bytesInUse(keys) {
+      try {
+        return keys.length ? await local.getBytesInUse(keys) : 0;
+      } catch {
+        return null; // Firefox doesn't support it everywhere.
+      }
     },
   };
 }
@@ -30,6 +51,15 @@ export function memoryStorage(): StorageLike {
     },
     async set(key, value) {
       data.set(key, structuredClone(value));
+    },
+    async remove(key) {
+      data.delete(key);
+    },
+    async keys(prefix) {
+      return [...data.keys()].filter((k) => k.startsWith(prefix));
+    },
+    async bytesInUse(keys) {
+      return keys.reduce((sum, k) => sum + (data.has(k) ? JSON.stringify(data.get(k)).length : 0), 0);
     },
   };
 }

@@ -14,8 +14,11 @@ export interface SaleTransaction {
   item: { id: number; name: string; type: string };
 }
 
+/** How sales are grouped on the charts: per day, or per week for long histories. */
+export type Bucket = "day" | "week";
+
 export interface DayPoint {
-  /** Local date, YYYY-MM-DD. */
+  /** Local date the day or week starts on, YYYY-MM-DD. */
   date: string;
   robux: number;
   sales: number;
@@ -34,6 +37,8 @@ export interface EarningsSummary {
   sales: number;
   averagePerSale: number;
   uniqueBuyers: number;
+  bucket: Bucket;
+  /** One point per day or week (see `bucket`). */
   daily: DayPoint[];
   byCategory: (Ranked & { category: CategoryId | "otherFold" })[];
   topItems: Ranked[];
@@ -44,16 +49,22 @@ export interface EarningsSummary {
 const pad = (n: number) => String(n).padStart(2, "0");
 export const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** Every local day from `from` to `to`, inclusive. */
-export function dayRange(from: Date, to: Date): string[] {
-  const days: string[] = [];
+/**
+ * The days or weeks from `from` to `to`, and which of them each local day
+ * falls in. Weeks start on Monday; the first one starts at `from`.
+ */
+export function bucketRange(from: Date, to: Date, bucket: Bucket): { starts: string[]; indexOfDay: Map<string, number> } {
+  const starts: string[] = [];
+  const indexOfDay = new Map<string, number>();
   const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
   while (d <= end) {
-    days.push(localDay(d));
+    const day = localDay(d);
+    if (bucket === "day" || starts.length === 0 || d.getDay() === 1) starts.push(day);
+    indexOfDay.set(day, starts.length - 1);
     d.setDate(d.getDate() + 1);
   }
-  return days;
+  return { starts, indexOfDay };
 }
 
 /** Item key for a transaction, matching SellableItem.key. */
@@ -89,11 +100,16 @@ function bump(map: Map<string, Ranked>, key: string, label: string, robux: numbe
   map.set(key, entry);
 }
 
-export function summarize(transactions: SaleTransaction[], from: Date, to: Date, items: SellableItem[] = []): EarningsSummary {
-  const days = dayRange(from, to);
-  const dayIndex = new Map(days.map((d, i) => [d, i]));
-  const daily: DayPoint[] = days.map((date) => ({ date, robux: 0, sales: 0 }));
+const CATEGORY_LABEL = new Map<string, string>(CATEGORIES.map((c) => [c.id, c.label]));
+
+export function summarize(transactions: SaleTransaction[], from: Date, to: Date, items: SellableItem[] = [], bucket: Bucket = "day"): EarningsSummary {
+  const { starts, indexOfDay } = bucketRange(from, to, bucket);
+  const points = () => starts.map((date): DayPoint => ({ date, robux: 0, sales: 0 }));
+  const daily = points();
   const itemMap = new Map(items.map((i) => [i.key, i]));
+  // Cheap bounds check first, so sales outside the range skip the date formatting.
+  const firstMs = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const endMs = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1).getTime();
 
   const categories = new Map<string, Ranked>();
   const topItems = new Map<string, Ranked>();
@@ -104,8 +120,9 @@ export function summarize(transactions: SaleTransaction[], from: Date, to: Date,
   let sales = 0;
 
   for (const t of transactions) {
-    const created = new Date(t.created);
-    const i = dayIndex.get(localDay(created));
+    const ms = Date.parse(t.created);
+    if (!(ms >= firstMs && ms < endMs)) continue;
+    const i = indexOfDay.get(localDay(new Date(ms)));
     if (i === undefined) continue;
     sales++;
     totalRobux += t.robux;
@@ -114,12 +131,12 @@ export function summarize(transactions: SaleTransaction[], from: Date, to: Date,
     daily[i].sales += 1;
 
     const category = categoryOfTransaction(t, itemMap);
-    bump(categories, category, CATEGORIES.find((c) => c.id === category)?.label ?? "Other", t.robux);
+    bump(categories, category, CATEGORY_LABEL.get(category) ?? "Other", t.robux);
     const key = transactionItemKey(t);
     bump(topItems, key, itemMap.get(key)?.name ?? t.item.name, t.robux);
     bump(buyers, String(t.buyer.id), t.buyer.name, t.robux);
 
-    const stats = perItem.get(key) ?? { robux: 0, sales: 0, daily: days.map((date) => ({ date, robux: 0, sales: 0 })) };
+    const stats = perItem.get(key) ?? { robux: 0, sales: 0, daily: points() };
     stats.robux += t.robux;
     stats.sales += 1;
     stats.daily[i].robux += t.robux;
@@ -151,6 +168,7 @@ export function summarize(transactions: SaleTransaction[], from: Date, to: Date,
     sales,
     averagePerSale: sales ? totalRobux / sales : 0,
     uniqueBuyers: buyers.size,
+    bucket,
     daily,
     byCategory,
     topItems: rank(topItems, 10),
@@ -163,18 +181,4 @@ export function summarize(transactions: SaleTransaction[], from: Date, to: Date,
 export function change(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
   return (current - previous) / previous;
-}
-
-/** Rolls daily points up into calendar months (date becomes YYYY-MM), for long ranges. */
-export function byMonth(daily: DayPoint[]): DayPoint[] {
-  const months: DayPoint[] = [];
-  for (const d of daily) {
-    const month = d.date.slice(0, 7);
-    const last = months.at(-1);
-    if (last?.date === month) {
-      last.robux += d.robux;
-      last.sales += d.sales;
-    } else months.push({ date: month, robux: d.robux, sales: d.sales });
-  }
-  return months;
 }

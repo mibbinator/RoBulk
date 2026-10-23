@@ -4,9 +4,10 @@ import { CreateTab } from "./CreateTab";
 import { EarningsTab } from "./EarningsTab";
 import { HistoryTab } from "./HistoryTab";
 import { ItemsTab } from "./ItemsTab";
+import { OptionsTab } from "./OptionsTab";
 import { WorkspaceContext, creatorKey, useWorkspaceState } from "./workspace";
 
-export type TabId = "items" | "earnings" | "create" | "badges" | "history";
+export type TabId = "items" | "earnings" | "create" | "badges" | "history" | "options";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "items", label: "Items" },
@@ -14,6 +15,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "create", label: "Create & copy" },
   { id: "badges", label: "Badges" },
   { id: "history", label: "History" },
+  { id: "options", label: "Options" },
 ];
 
 export function Shell({ onClose, initialTab = "items", initialUniverseId = null }: { onClose: () => void; initialTab?: TabId; initialUniverseId?: number | null }) {
@@ -120,6 +122,25 @@ export function Shell({ onClose, initialTab = "items", initialUniverseId = null 
           {tab === "create" && <CreateTab onBusy={setBusy} />}
           {tab === "badges" && <BadgesTab onBusy={setBusy} />}
           {tab === "history" && <HistoryTab onRestore={() => setTab("items")} />}
+          {tab === "options" && <OptionsTab />}
+
+          {/* The Earnings report shows its own progress. */}
+          {ws.sales.loading && tab !== "earnings" && (
+            <div class="rb-loadbar" role="status">
+              <div class={`rb-progress-bar ${ws.sales.fraction == null ? "is-indeterminate" : ""}`}>
+                <div style={{ width: ws.sales.fraction == null ? undefined : `${Math.round(ws.sales.fraction * 100)}%` }} />
+              </div>
+              <span title={ws.sales.progress ?? undefined}>{ws.sales.progress} You can keep using RoBulk while it loads.</span>
+              <button class="rb-link-btn" onClick={ws.stopSales}>
+                Stop
+              </button>
+              {tab !== "options" && (
+                <button class="rb-link-btn" disabled={busy} onClick={() => setTab("options")}>
+                  Options
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </WorkspaceContext.Provider>

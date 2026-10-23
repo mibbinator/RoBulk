@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { listSales, toSaleTransaction } from "./economy";
+import { RATE_LIMITED_PACE_MS, listSales, toSaleTransaction } from "./economy";
 import { createClient } from "./http";
 import type { Creator } from "./types";
 
@@ -35,11 +35,67 @@ describe("economy", () => {
     ];
     const fetchImpl = vi.fn(async (_url: string) => new Response(JSON.stringify(pages.shift())));
 
-    const { transactions, truncated } = await listSales(createClient(fetchImpl), group, new Date("2026-10-15T00:00:00Z"));
+    const { transactions, truncated, resumeCursor } = await listSales(createClient(fetchImpl), group, new Date("2026-10-15T00:00:00Z"));
 
     expect(transactions.map((t) => t.created.slice(0, 10))).toEqual(["2026-10-22", "2026-10-21", "2026-10-20"]);
     expect(truncated).toBe(false);
     expect(String(fetchImpl.mock.calls[0][0])).toBe("https://economy.roblox.com/v2/groups/5/transactions?transactionType=Sale&limit=100");
     expect(String(fetchImpl.mock.calls[1][0])).toContain("cursor=p2");
+    // Going further back later starts on the page that crossed the start date.
+    expect(resumeCursor).toBe("p2");
+  });
+
+  it("carries on from a cursor, and says where to carry on from when cut short", async () => {
+    const fetchImpl = vi.fn(async (_url: string) => new Response(JSON.stringify({ data: [raw("2026-09-01T00:00:00Z")], nextPageCursor: "p6" })));
+
+    const res = await listSales(createClient(fetchImpl), group, null, { fromCursor: "p5", maxPages: 1 });
+
+    expect(String(fetchImpl.mock.calls[0][0])).toContain("cursor=p5");
+    expect(res.truncated).toBe(true);
+    expect(res.resumeCursor).toBe("p6");
+  });
+
+  it("fetches pages back to back until Roblox rate-limits, then paces itself", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const page = (day: number, next: string | null) => ({ data: [raw(`2026-10-${day}T00:00:00Z`)], nextPageCursor: next });
+      const responses = [
+        () => new Response(JSON.stringify(page(22, "p2"))),
+        () => new Response(JSON.stringify(page(21, "p3"))),
+        () => new Response("{}", { status: 429, headers: { "retry-after": "2" } }),
+        () => new Response(JSON.stringify(page(20, "p4"))),
+        () => new Response(JSON.stringify(page(19, null))),
+      ];
+      const at: number[] = [];
+      const fetchImpl = vi.fn(async (_url: string) => {
+        at.push(Date.now());
+        return responses.shift()!();
+      });
+
+      const result = listSales(createClient(fetchImpl), group, null);
+      await vi.runAllTimersAsync();
+      const { transactions, reachedEnd } = await result;
+
+      expect(transactions).toHaveLength(4);
+      expect(reachedEnd).toBe(true);
+      const gaps = at.slice(1).map((t, i) => t - at[i]);
+      expect(gaps).toEqual([0, 0, 2000, RATE_LIMITED_PACE_MS]); // no pause, Retry-After, then paced
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops while waiting out a rate limit and keeps what was loaded", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async (_url: string) => {
+      if (fetchImpl.mock.calls.length === 1) return new Response(JSON.stringify({ data: [raw("2026-10-22T00:00:00Z")], nextPageCursor: "p2" }));
+      setTimeout(() => controller.abort(), 0);
+      return new Response("{}", { status: 429, headers: { "retry-after": "60" } });
+    });
+
+    const { transactions, truncated } = await listSales(createClient(fetchImpl), group, null, { signal: controller.signal });
+
+    expect(transactions).toHaveLength(1);
+    expect(truncated).toBe(true);
   });
 });

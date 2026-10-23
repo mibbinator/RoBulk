@@ -385,8 +385,12 @@ export function ItemStatsDialog({ item, onClose }: { item: SellableItem; onClose
             <StatTile label={`Earned, ${rangeLabel(sales.range)}`} value={robux(stats?.robux ?? 0)} delta={prev ? (prev.robux ? ((stats?.robux ?? 0) - prev.robux) / prev.robux : null) : undefined} />
             <StatTile label="Sales" value={(stats?.sales ?? 0).toLocaleString()} />
           </div>
-          <h3 class="rb-subhead">Daily earnings</h3>
-          <BarChart labels={(stats?.daily ?? sales.current.daily).map((d) => d.date.slice(5))} values={(stats?.daily ?? sales.current.daily).map((d) => (stats ? d.robux : 0))} height={180} />
+          <h3 class="rb-subhead">{sales.current.bucket === "week" ? "Weekly earnings" : "Daily earnings"}</h3>
+          <BarChart
+            labels={(stats?.daily ?? sales.current.daily).map((d) => (sales.current!.bucket === "week" ? d.date : d.date.slice(5)))}
+            values={(stats?.daily ?? sales.current.daily).map((d) => (stats ? d.robux : 0))}
+            height={180}
+          />
         </>
       )}
     </Dialog>

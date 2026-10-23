@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SaleTransaction } from "./earnings";
-import { REFRESH_DAYS, mergeFetched, planFetch, type SalesCacheEntry } from "./salesCache";
+import { memoryStorage } from "./history";
+import { MAX_STORED_SALES, PENDING_MAX_DAYS, SalesCache, mergeFetched, mergeOlder, packSales, planFetch, unpackSales, type SalesCacheEntry } from "./salesCache";
 
 const DAY = 86_400_000;
 const now = new Date("2026-10-23T12:00:00Z");
@@ -21,14 +22,23 @@ describe("planFetch", () => {
     expect(planFetch(null, null, now)).toBeNull();
   });
 
-  it("only refreshes recent sales when the cache already covers the range", () => {
-    const cache: SalesCacheEntry = { sales: [sale("a", 1)], coveredFrom: ago(200).toISOString(), updatedAt: ago(1).toISOString() };
-    expect(planFetch(cache, ago(60), now)).toEqual(ago(REFRESH_DAYS));
+  it("only fetches what's new since the last refresh, with a day's overlap", () => {
+    const cache: SalesCacheEntry = { sales: [sale("a", 3)], coveredFrom: ago(200).toISOString(), updatedAt: ago(2).toISOString() };
+    expect(planFetch(cache, ago(60), now)).toEqual(ago(3));
   });
 
-  it("refreshes back to the newest cached sale if that's older", () => {
-    const cache: SalesCacheEntry = { sales: [sale("a", 50)], coveredFrom: null, updatedAt: ago(50).toISOString() };
-    expect(planFetch(cache, null, now)).toEqual(ago(50));
+  it("goes back far enough to re-check sales that were still pending", () => {
+    const cache: SalesCacheEntry = {
+      sales: [sale("new", 1), sale("pending", 12, true), sale("released", 20)],
+      coveredFrom: null,
+      updatedAt: ago(1).toISOString(),
+    };
+    expect(planFetch(cache, null, now)).toEqual(ago(12));
+  });
+
+  it("ignores sales stuck as pending for longer than Roblox holds them", () => {
+    const cache: SalesCacheEntry = { sales: [sale("stuck", PENDING_MAX_DAYS + 10, true)], coveredFrom: null, updatedAt: ago(1).toISOString() };
+    expect(planFetch(cache, null, now)).toEqual(ago(2));
   });
 
   it("pages everything again when all-time is wanted but the cache isn't complete", () => {
@@ -50,7 +60,7 @@ describe("mergeFetched", () => {
       coveredFrom: null,
       updatedAt: ago(2).toISOString(),
     };
-    const stopAt = ago(REFRESH_DAYS);
+    const stopAt = ago(5);
     const merged = mergeFetched(
       cache,
       { transactions: [sale("new", 0), { ...sale("recent-pending", 5), isPending: false }], reachedSince: true, reachedEnd: false },
@@ -78,10 +88,87 @@ describe("mergeFetched", () => {
     expect(merged.sales.map((s) => s.id)).toEqual(["a", "c"]);
   });
 
+  it("keeps the cursor for paging further back from wherever coverage now ends", () => {
+    const fresh = mergeFetched(null, { transactions: [sale("a", 1)], reachedSince: true, reachedEnd: false, resumeCursor: "p2" }, ago(60), now);
+    expect(fresh.olderCursor).toBe("p2");
+
+    // A refresh of the newest sales leaves the older end, and its cursor, alone.
+    const cache: SalesCacheEntry = { sales: [sale("a", 1), sale("b", 50)], coveredFrom: ago(60).toISOString(), updatedAt: ago(1).toISOString(), olderCursor: "p2" };
+    const refreshed = mergeFetched(cache, { transactions: [sale("new", 0)], reachedSince: true, reachedEnd: false, resumeCursor: "top" }, ago(2), now);
+    expect(refreshed.olderCursor).toBe("p2");
+    expect(refreshed.coveredFrom).toBe(ago(60).toISOString());
+
+    const complete = mergeFetched(null, { transactions: [sale("a", 1)], reachedSince: false, reachedEnd: true, resumeCursor: null }, null, now);
+    expect(complete.olderCursor).toBeNull();
+  });
+
   it("drops a stale cache that doesn't line up with the new window", () => {
     const cache: SalesCacheEntry = { sales: [sale("ancient", 300)], coveredFrom: ago(400).toISOString(), updatedAt: ago(200).toISOString() };
     const merged = mergeFetched(cache, { transactions: [sale("new", 1)], reachedSince: true, reachedEnd: false }, ago(30), now);
     expect(merged.sales.map((s) => s.id)).toEqual(["new"]);
     expect(merged.coveredFrom).toBe(ago(30).toISOString());
+  });
+});
+
+describe("mergeOlder", () => {
+  const cache: SalesCacheEntry = { sales: [sale("a", 1), sale("b", 50)], coveredFrom: ago(60).toISOString(), updatedAt: now.toISOString(), olderCursor: "p2" };
+
+  it("adds older sales after the cached ones, skipping repeats from the resumed page", () => {
+    const merged = mergeOlder(cache, { transactions: [sale("b", 50), sale("c", 80)], reachedSince: true, reachedEnd: false, resumeCursor: "p3" }, ago(180));
+    expect(merged.sales.map((s) => s.id)).toEqual(["a", "b", "c"]);
+    expect(merged.coveredFrom).toBe(ago(180).toISOString());
+    expect(merged.olderCursor).toBe("p3");
+    expect(merged.updatedAt).toBe(cache.updatedAt); // the newest end wasn't re-read
+  });
+
+  it("marks the history complete once paging reaches the first sale", () => {
+    const merged = mergeOlder(cache, { transactions: [sale("c", 400)], reachedSince: false, reachedEnd: true, resumeCursor: null }, null);
+    expect(merged.coveredFrom).toBeNull();
+    expect(merged.olderCursor).toBeNull();
+  });
+
+  it("covers back to the oldest sale loaded when stopped early", () => {
+    const merged = mergeOlder(cache, { transactions: [sale("c", 80), sale("d", 90)], reachedSince: false, reachedEnd: false, resumeCursor: "p5" }, null);
+    expect(merged.coveredFrom).toBe(ago(90).toISOString());
+    expect(merged.olderCursor).toBe("p5");
+  });
+});
+
+describe("stored sales", () => {
+  it("round-trips through the compact format, sharing item and buyer objects", () => {
+    const entry: SalesCacheEntry = { sales: [sale("a", 1, true), sale("b", 2)], coveredFrom: ago(2).toISOString(), updatedAt: now.toISOString(), olderCursor: "p2" };
+    const packed = packSales(entry);
+    expect(packed.items).toHaveLength(1);
+    expect(packed.buyers).toHaveLength(1);
+
+    const back = unpackSales(JSON.parse(JSON.stringify(packed)));
+    expect(back).toEqual(entry);
+    expect(back.sales[0].item).toBe(back.sales[1].item);
+  });
+
+  it("keeps only the newest sales past the limit, and says how far back they go", () => {
+    const many = Array.from({ length: MAX_STORED_SALES + 5 }, (_, i) => ({ ...sale(String(i), 0), created: new Date(now.getTime() - i * 1000).toISOString() }));
+    const packed = packSales({ sales: many, coveredFrom: ago(1).toISOString(), updatedAt: now.toISOString(), olderCursor: "p9" });
+    expect(packed.rows).toHaveLength(MAX_STORED_SALES);
+    expect(packed.coveredFrom).toBe(many[MAX_STORED_SALES - 1].created);
+    expect(packed.olderCursor).toBeNull(); // it pointed past the dropped sales
+  });
+
+  it("reads entries saved before the compact format, and clears every creator", async () => {
+    const storage = memoryStorage();
+    const old: SalesCacheEntry = { sales: [sale("a", 1)], coveredFrom: null, updatedAt: now.toISOString() };
+    await storage.set("sales:User:1", old);
+    await storage.set("log", []);
+    const cache = new SalesCache(storage);
+    expect(await cache.read("User:1")).toEqual(old);
+
+    await cache.write("Group:9", old);
+    expect(await cache.read("Group:9")).toEqual({ ...old, olderCursor: null });
+    expect(await cache.size()).toBeGreaterThan(0);
+
+    await cache.clear();
+    expect(await cache.read("User:1")).toBeNull();
+    expect(await cache.read("Group:9")).toBeNull();
+    expect(await storage.get("log")).toEqual([]); // other data is left alone
   });
 });

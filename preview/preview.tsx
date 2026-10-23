@@ -11,6 +11,7 @@ import { fakeFetch } from "./fakeRoblox";
 //   ?embed=1     panel only, transparent background (for store screenshots)
 //   ?demo=name   click through to a state, see demos.ts
 //   ?universeId= preselect an experience
+//   ?unpublished show the unpublished clothing warning
 
 window.fetch = fakeFetch as typeof fetch;
 
