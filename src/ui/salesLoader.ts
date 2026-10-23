@@ -1,5 +1,5 @@
 import { getBalance, listSales, type TransactionResult } from "../api/economy";
-import type { RobloxClient } from "../api/http";
+import { RobloxApiError, type RobloxClient } from "../api/http";
 import type { Creator } from "../api/types";
 import { SalesCache, cacheCovers, mergeFetched, mergeOlder, planFetch, type SalesCacheEntry } from "../core/salesCache";
 
@@ -16,6 +16,12 @@ import { SalesCache, cacheCovers, mergeFetched, mergeOlder, planFetch, type Sale
 // asks for) or background loads (the Account Overview's other groups). A
 // background load waits between pages whenever a main load is running
 // anywhere on the page, so the two never page through Roblox at once.
+//
+// A load never starts over. Asking for more while it runs widens what it's
+// loading; a Refresh waits until it's finished; switching creators lets it
+// carry on in the background; and if Roblox fails part-way, it tries again
+// from the last page it kept. The only time it pages from the newest sale
+// again is when Roblox won't accept the saved place to carry on from.
 
 export interface LoaderState {
   /** Everything loaded so far, newest first. */
@@ -40,6 +46,9 @@ interface Running {
 
 const covers = (outer: Date | null, inner: Date | null) => outer === null || (inner !== null && outer <= inner);
 
+/** How long to wait before trying again after Roblox fails, times the attempt number (tests shorten it). */
+export const loaderTiming = { retryMs: 4000 };
+
 /** Told about every change to any loader, for things outside the panel like the sidebar. */
 const pageListeners = new Set<() => void>();
 
@@ -47,6 +56,8 @@ export class SalesLoader {
   state: LoaderState = { entry: null, balance: null, loadedAt: null, loading: false, progress: null, fraction: null, error: null };
   private listeners = new Set<() => void>();
   private running: Running | null = null;
+  /** A Refresh asked for while loading; it runs once the load is finished. */
+  private refreshAfter: Date | null | undefined = undefined;
   /** Browser saves run one at a time, always writing the latest sales. */
   private unsaved: SalesCacheEntry | null = null;
   private saving = false;
@@ -99,26 +110,41 @@ export class SalesLoader {
 
   /**
    * Makes sure sales back to `want` (null = everything) are loaded. Does
-   * nothing if they already are, or if the load that's running will get
-   * there; `force` (Refresh, Keep loading) fetches anyway.
+   * nothing if they already are. While a load is running it's never
+   * restarted: asking for more widens it, and `force` (Refresh, Keep
+   * loading) runs once it's finished.
    */
   load(want: Date | null, { force = false, background = false }: { force?: boolean; background?: boolean } = {}) {
     const { entry, loadedAt } = this.state;
-    if (!force && this.running && covers(this.running.want, want)) {
+    if (this.running) {
       // Asked for as a main load now: stop giving way.
       if (!background && this.running.background) {
         this.running.background = false;
         this.set({});
       }
+      if (!covers(this.running.want, want)) this.running.want = want; // go further back as part of the same load
+      else if (force) this.refreshAfter = want;
       return;
     }
-    if (!force && !this.running && loadedAt && entry && cacheCovers(entry, want)) return;
-    this.running?.controller.abort();
+    if (!force && loadedAt && entry && cacheCovers(entry, want)) return;
     const controller = new AbortController();
     this.running = { want, controller, background };
-    void this.run(want, controller).finally(() => {
-      if (this.running?.controller === controller) this.running = null;
+    void this.run(controller).finally(() => {
+      if (this.running?.controller !== controller) return;
+      this.running = null;
+      // A Refresh asked for part-way through happens now.
+      const refresh = this.refreshAfter;
+      this.refreshAfter = undefined;
+      if (refresh !== undefined && !controller.signal.aborted) this.load(refresh, { force: true });
     });
+  }
+
+  /** Keeps a running load going, but behind whatever is loading for the creator now on screen. */
+  demote() {
+    if (this.running && !this.running.background) {
+      this.running.background = true;
+      this.set({});
+    }
   }
 
   /** Resolves once nothing is loading (straight away if nothing is). */
@@ -162,90 +188,134 @@ export class SalesLoader {
     if (!this.running) return;
     this.running.controller.abort();
     this.running = null;
+    this.refreshAfter = undefined;
     this.set({ loading: false, progress: null, fraction: null });
   }
 
-  private async run(want: Date | null, controller: AbortController) {
+  private async run(controller: AbortController) {
     const { signal } = controller;
-    const fresh = this.state.loadedAt !== null;
+    const target = () => (this.running?.controller === controller ? this.running.want : null);
     this.set({ loading: true, error: null, progress: "Loading sales…", fraction: 0 });
-    try {
-      const now = new Date();
-      // This visit's sales if any, otherwise what earlier visits saved in the browser.
-      let cached = this.state.entry;
-      if (!cached && this.remember()) {
-        cached = await this.cache.read(this.key);
+    let failures = 0;
+    while (!signal.aborted) {
+      try {
+        if (await this.pass(controller, target)) break;
+        failures = 0;
+      } catch (e) {
         if (signal.aborted) return;
-        if (cached) this.set({ entry: cached });
-      }
-
-      /** Pages back from `fromCursor` (or the newest sale) to `stopAt`, keeping each page. */
-      const fetchSales = (stopAt: Date | null, label: string, startsAt: Date, onPage: (soFar: TransactionResult) => void, fromCursor?: string) => {
-        const span = stopAt ? startsAt.getTime() - stopAt.getTime() : 0;
-        return listSales(this.client, this.creator, stopAt, {
-          maxPages: stopAt === null ? 5000 : 200,
-          fromCursor,
-          signal,
-          onPage,
-          beforePage: () => this.waitTurn(controller),
-          onProgress: (p) =>
-            this.set({
-              progress:
-                label +
-                `${p.sales.toLocaleString()} so far` +
-                (p.oldest ? `, back to ${new Date(p.oldest).toLocaleDateString()}` : "") +
-                (stopAt === null ? ". Only the first load takes this long." : ""),
-              // Paging runs newest to oldest, so how far back it's got is how far along it is.
-              fraction: span > 0 ? Math.min(1, p.oldest ? (startsAt.getTime() - new Date(p.oldest).getTime()) / span : 0) : null,
-            }),
-        });
-      };
-
-      /** Pages from the newest sale back to `stopAt`, folding them in on top of `base`. */
-      const fromNewest = async (base: SalesCacheEntry | null, stopAt: Date | null, label: string) => {
-        const keepPage = (soFar: TransactionResult) => {
-          if (signal.aborted) return; // a newer load has taken over
-          // Until paging reaches sales already kept, the new ones don't join up with them yet.
-          const oldest = soFar.transactions.at(-1)?.created;
-          if (base && (!oldest || new Date(oldest) > new Date(base.updatedAt))) return;
-          this.keep(mergeFetched(base, soFar, stopAt, now), { loadedAt: now });
-        };
-        const fetched = await fetchSales(stopAt, label, now, keepPage);
-        if (signal.aborted) return null;
-        const merged = mergeFetched(base, fetched, stopAt, now);
-        this.keep(merged, { loadedAt: now });
-        return merged;
-      };
-
-      // Going further back than what's loaded carries on from where the last
-      // load stopped, instead of paging through those sales again.
-      const resume = !!cached?.olderCursor && !cacheCovers(cached, want);
-      if (!(resume && fresh)) getBalance(this.client, this.creator).then((balance) => this.set({ balance }));
-      let merged = cached;
-      // Sales fetched on this visit only need the older part; saved ones also need what's new.
-      if (!(resume && fresh)) {
-        const stopAt = resume ? planFetch(cached, new Date(cached!.coveredFrom!), now) : planFetch(cached, want, now);
-        merged = await fromNewest(cached, stopAt, stopAt === null ? "Loading your full sales history… " : "Loading sales… ");
-        if (!merged) return;
-      }
-      if (resume && merged?.olderCursor && !cacheCovers(merged, want)) {
-        const base = merged;
-        const keepPage = (soFar: TransactionResult) => signal.aborted || this.keep(mergeOlder(base, soFar, want));
-        try {
-          const older = await fetchSales(want, "Loading older sales… ", new Date(base.coveredFrom!), keepPage, base.olderCursor!);
-          if (signal.aborted) return;
-          this.keep(mergeOlder(base, older, want));
-        } catch {
-          if (signal.aborted) return;
-          // Roblox may not take a cursor from an earlier visit: page from the newest sale instead.
-          if (!(await fromNewest(this.state.entry, want, want === null ? "Loading your full sales history… " : "Loading sales… "))) return;
+        // Everything loaded so far is kept, so trying again carries on from the last page.
+        if (++failures > 3) {
+          this.set({ loading: false, progress: null, fraction: null, error: `Couldn't load sales: ${(e as Error).message}. What's loaded is kept; Refresh carries on from there.` });
+          return;
         }
+        this.set({ progress: `Roblox didn't answer, so RoBulk is trying again from where it got to (${failures} of 3)…` });
+        await new Promise((r) => setTimeout(r, loaderTiming.retryMs * failures));
       }
-      if (!signal.aborted) this.set({ loading: false, progress: null, fraction: null });
-    } catch (e) {
-      if (signal.aborted) return;
-      this.set({ loading: false, progress: null, fraction: null, error: `Couldn't load sales: ${(e as Error).message}` });
     }
+    if (!signal.aborted) this.set({ loading: false, progress: null, fraction: null });
+  }
+
+  /**
+   * One pass towards the target: what's new since the last load, then
+   * further back from where loading got to. True once there's nothing left
+   * to load (or nothing more Roblox will give); false if the target was
+   * widened during the pass and there's more to do.
+   */
+  private async pass(controller: AbortController, target: () => Date | null): Promise<boolean> {
+    const { signal } = controller;
+    const want = target();
+    const fresh = this.state.loadedAt !== null;
+    const now = new Date();
+    // This visit's sales if any, otherwise what earlier visits saved in the browser.
+    let cached = this.state.entry;
+    if (!cached && this.remember()) {
+      cached = await this.cache.read(this.key);
+      if (signal.aborted) return true;
+      if (cached) this.set({ entry: cached });
+    }
+
+    /** Pages back from `fromCursor` (or the newest sale) to `stopAt`, keeping each page. `already` counts what was loaded before. */
+    const fetchSales = (stopAt: Date | null | (() => Date | null), label: string, startsAt: Date, already: number, onPage: (soFar: TransactionResult) => void, fromCursor?: string) => {
+      const stopNow = () => (typeof stopAt === "function" ? stopAt() : stopAt);
+      return listSales(this.client, this.creator, stopAt, {
+        maxPages: stopAt === null ? 5000 : 200,
+        fromCursor,
+        signal,
+        onPage,
+        beforePage: () => this.waitTurn(controller),
+        onProgress: (p) => {
+          const end = stopNow();
+          const span = end ? startsAt.getTime() - end.getTime() : 0;
+          this.set({
+            // One running total for the whole load, so the count never seems to start again.
+            progress:
+              label +
+              `${(already + p.sales).toLocaleString()} sales loaded` +
+              (p.oldest ? `, back to ${new Date(p.oldest).toLocaleDateString()}` : "") +
+              (end === null && !fromCursor ? ". Only the first load takes this long." : "."),
+            // Paging runs newest to oldest, so how far back it's got is how far along it is.
+            fraction: span > 0 ? Math.min(1, p.oldest ? (startsAt.getTime() - new Date(p.oldest).getTime()) / span : 0) : null,
+          });
+        },
+      });
+    };
+
+    /**
+     * Pages from the newest sale back to `stopAt`, folding them in on top of
+     * `base`. With `followTarget`, it goes as far back as the load's target,
+     * even if that's widened while it runs.
+     */
+    const fromNewest = async (base: SalesCacheEntry | null, stopAt: Date | null, label: string, followTarget = false) => {
+      const stopNow = () => (followTarget ? target() : stopAt);
+      const keepPage = (soFar: TransactionResult) => {
+        if (signal.aborted) return;
+        // Until paging reaches sales already kept, the new ones don't join up with them yet.
+        const oldest = soFar.transactions.at(-1)?.created;
+        if (base && (!oldest || new Date(oldest) > new Date(base.updatedAt))) return;
+        this.keep(mergeFetched(base, soFar, stopNow(), now), { loadedAt: now });
+      };
+      const fetched = await fetchSales(followTarget ? stopNow : stopAt, label, now, base?.sales.length ?? 0, keepPage);
+      if (signal.aborted) return null;
+      const merged = mergeFetched(base, fetched, stopNow(), now);
+      this.keep(merged, { loadedAt: now });
+      return merged;
+    };
+
+    // Going further back than what's loaded carries on from where the last
+    // load stopped, instead of paging through those sales again.
+    const resume = !!cached?.olderCursor && !cacheCovers(cached, want);
+    let merged = cached;
+    // Sales fetched on this visit only need the older part; saved ones also need what's new.
+    if (!(resume && fresh)) {
+      getBalance(this.client, this.creator).then((balance) => this.set({ balance }));
+      const stopAt = resume ? planFetch(cached, new Date(cached!.coveredFrom!), now) : planFetch(cached, want, now);
+      // Loading back to the target itself (not just what's new): keep going if the target is widened meanwhile.
+      const toTarget = !resume && stopAt === want;
+      merged = await fromNewest(cached, stopAt, stopAt === null ? "Loading your full sales history… " : "Loading sales… ", toTarget);
+      if (!merged) return true;
+    }
+    if (resume && merged?.olderCursor && !cacheCovers(merged, want)) {
+      const base = merged;
+      const keepPage = (soFar: TransactionResult) => signal.aborted || this.keep(mergeOlder(base, soFar, target()));
+      try {
+        const older = await fetchSales(target, "Loading older sales… ", new Date(base.coveredFrom!), base.sales.length, keepPage, base.olderCursor!);
+        if (signal.aborted) return true;
+        this.keep(mergeOlder(base, older, target()));
+      } catch (e) {
+        if (signal.aborted) return true;
+        // Only when Roblox won't take the saved place to carry on from (it may not
+        // last between visits) does loading go back to the newest sale. Anything
+        // else, like a dropped connection, is tried again from the last page.
+        if (!(e instanceof RobloxApiError && e.status === 400)) throw e;
+        if (!(await fromNewest(this.state.entry, want, "Loading your sales history again from the newest sale (Roblox wouldn't let RoBulk carry on from where it stopped)… ", true))) return true;
+      }
+    }
+    const entry = this.state.entry;
+    const goal = target();
+    // Done when everything asked for is in, or when there's nowhere left to carry on from.
+    if (!entry || cacheCovers(entry, goal) || !entry.olderCursor) return true;
+    // The target was widened while this pass ran; it hasn't reached it yet.
+    return goal !== want ? false : true;
   }
 }
 

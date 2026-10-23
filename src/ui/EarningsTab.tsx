@@ -33,7 +33,7 @@ function reportCsv(points: DayPoint[], weekly: boolean, s: EarningsSummary): str
 }
 
 export function EarningsTab() {
-  const { creator, sales, loadSales, stopSales, storage, salesEntry, settings } = useWorkspace();
+  const { creator, sales, loadSales, stopSales, storage, salesEntry, scopedSales, settings, universeId, experience, gameStats } = useWorkspace();
   /** When this creator's report was last opened before now, for the "since you last looked" line. */
   const [lastLooked, setLastLooked] = useState<{ key: string; at: string | null } | null>(null);
 
@@ -51,7 +51,7 @@ export function EarningsTab() {
       current = false;
     };
   }, [creator]);
-  const sinceLast = lastLooked?.at && creator && lastLooked.key === creatorKey(creator) && salesEntry ? salesSince(salesEntry.sales, lastLooked.at) : null;
+  const sinceLast = lastLooked?.at && creator && lastLooked.key === creatorKey(creator) && salesEntry ? salesSince(scopedSales, lastLooked.at) : null;
 
   // Load on open; the workspace reloads it after a creator switch.
   useEffect(() => {
@@ -137,6 +137,26 @@ export function EarningsTab() {
             </button>
           </div>
         )}
+
+        {universeId != null && (
+          <section class="rb-game-head">
+            <h3>{experience?.name ?? gameStats?.name ?? "Experience"}</h3>
+            <p class="rb-muted rb-small">This experience's stats, and the sales of its game passes and developer products. Your clothing store has its own report.</p>
+            {gameStats && (
+              <div class="rb-kpis">
+                <StatTile label="Visits" value={gameStats.visits.toLocaleString()} />
+                <StatTile label="Playing now" value={gameStats.playing.toLocaleString()} />
+                <StatTile label="Favorites" value={gameStats.favorites.toLocaleString()} />
+                <StatTile
+                  label="Rating"
+                  value={gameStats.upVotes != null && gameStats.downVotes != null && gameStats.upVotes + gameStats.downVotes > 0 ? `${Math.round((gameStats.upVotes / (gameStats.upVotes + gameStats.downVotes)) * 100)}%` : "—"}
+                  hint={gameStats.upVotes != null ? `${gameStats.upVotes.toLocaleString()} likes, ${(gameStats.downVotes ?? 0).toLocaleString()} dislikes` : undefined}
+                />
+              </div>
+            )}
+          </section>
+        )}
+        {universeId == null && s && <p class="rb-muted rb-small rb-scope-note">Sales of your clothing and accessories. Game pass and developer product sales are in each experience's report (pick one in the menu at the top).</p>}
 
         {s && (
           <>
@@ -226,7 +246,7 @@ export function EarningsTab() {
                   </div>
                 </section>
 
-                {settings.bestTimes && salesEntry && sales.since && <BestTimes transactions={salesEntry.sales} from={new Date(sales.since)} to={new Date()} />}
+                {settings.bestTimes && salesEntry && sales.since && <BestTimes transactions={scopedSales} from={new Date(sales.since)} to={new Date()} />}
               </div>
             )}
           </>

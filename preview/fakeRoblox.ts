@@ -117,7 +117,16 @@ export async function fakeFetch(input: RequestInfo | URL, init: RequestInit = {}
   }
   if (method !== "GET") return new Response(null, { status: 200 });
   if (url.includes("/users/authenticated")) return json({ id: store.owner.id, name: store.owner.name, displayName: store.owner.name });
-  if (url.includes("/groups/roles")) return json({ data: [{ group: { id: store.group.id, name: store.group.name }, role: { rank: 255 } }] });
+  // The sample store's group (owned), and a partner group the owner only gets a payout share of.
+  if (url.includes("/groups/roles")) {
+    return json({
+      data: [
+        { group: { id: store.group.id, name: store.group.name, owner: { userId: store.owner.id } }, role: { rank: 255 } },
+        { group: { id: 777, name: "Partner Studio", owner: { userId: 1 } }, role: { rank: 200 } },
+      ],
+    });
+  }
+  if (url.includes("/groups/777/payouts")) return json({ data: [{ user: { userId: store.owner.id, username: store.owner.name }, percentage: 25 }] });
   if (url.includes("/membership")) return json({ permissions: { groupEconomyPermissions: { manageItems: true, manageGroupGames: true, spendGroupFunds: true } } });
   if (url.includes("catalog.roblox.com/v2/search")) {
     // The signed-in user's own (non-group) catalog is empty in the preview.
@@ -129,6 +138,12 @@ export async function fakeFetch(input: RequestInfo | URL, init: RequestInit = {}
   }
   if (url.includes("revenue-split")) return json({ RevenueSplit: { creatorSplitPercentage: 70 } });
   if (url.includes("/universes?")) return json({ data: experiences, nextPageCursor: null });
+  if (url.includes("games.roblox.com/v1/games/votes")) return json({ data: [{ id: Number(new URL(url).searchParams.get("universeIds")), upVotes: 1840, downVotes: 160 }] });
+  if (url.includes("games.roblox.com/v1/games?")) {
+    const id = Number(new URL(url).searchParams.get("universeIds"));
+    const game = experiences.find((x) => x.id === id);
+    return json({ data: game ? [{ id, name: game.name, creator: { id: store.group.id, type: "Group", name: store.group.name }, visits: 482113, playing: 37, favoritedCount: 9214, created: "2024-08-11T04:09:14Z", updated: "2026-10-20T18:00:00Z" }] : [] });
+  }
   if (url.includes("/game-passes/creator")) {
     return json({
       gamePasses: passes.map((p) => ({ gamePassId: p.gamePassId, name: p.name, isForSale: p.onSale, priceInformation: { defaultPriceInRobux: p.price, enabledFeatures: ["RegionalPricing"] }, isManagedPricingEnabled: p.gamePassId === 901 })),

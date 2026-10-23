@@ -3,7 +3,7 @@ import { createClient } from "../api/http";
 import type { Creator } from "../api/types";
 import { memoryStorage } from "../core/history";
 import { SalesCache } from "../core/salesCache";
-import { forgetSalesLoaders, salesLoader } from "./salesLoader";
+import { forgetSalesLoaders, loaderTiming, salesLoader } from "./salesLoader";
 
 const me: Creator = { type: "User", id: 1, name: "me", access: { avatarItems: true, experiences: true, earnings: true } };
 const DAY = 86_400_000;
@@ -28,12 +28,19 @@ const PAGES: Record<string, { data: ReturnType<typeof sale>[]; nextPageCursor: s
 
 function fakeRoblox() {
   const requested: string[] = [];
+  /** Cursors whose next request fails with this status. */
+  const failOnce = new Map<string, number>();
   const waiting: (() => void)[] = [];
   const fetchImpl = vi.fn(async (url: string) => {
     if (url.includes("/currency")) return json({ robux: 50 });
     const cursor = new URL(url).searchParams.get("cursor") ?? "";
     requested.push((url.includes("/groups/") ? "group " : "") + cursor);
     await new Promise<void>((r) => waiting.push(r));
+    const status = failOnce.get(cursor);
+    if (status) {
+      failOnce.delete(cursor);
+      return new Response(JSON.stringify({ errors: [{ message: "nope" }] }), { status });
+    }
     return json(PAGES[cursor]);
   });
   /** Lets the next waiting page through and waits for it to be handled. */
@@ -42,7 +49,7 @@ function fakeRoblox() {
     waiting.shift()?.();
     await new Promise((r) => setTimeout(r, 20));
   };
-  return { fetchImpl, requested, release };
+  return { fetchImpl, requested, release, failOnce };
 }
 
 function setup() {
@@ -52,6 +59,7 @@ function setup() {
   return { ...roblox, cache, loader };
 }
 
+loaderTiming.retryMs = 10;
 afterEach(() => forgetSalesLoaders());
 
 describe("SalesLoader", () => {
@@ -154,5 +162,57 @@ describe("SalesLoader", () => {
     await release();
     await release();
     expect(other.state.entry!.sales).toHaveLength(5);
+  });
+  it("never starts over: asking for more while loading widens the same load", async () => {
+    const { loader, requested, release } = setup();
+    loader.load(new Date(Date.now() - 60 * DAY));
+    await release(); // page 1
+    loader.load(null); // All time picked before 60 days finished
+    await release();
+    await release();
+    expect(requested).toEqual(["", "p2", "p3"]);
+    expect(loader.state.entry!.coveredFrom).toBeNull();
+    expect(loader.state.loading).toBe(false);
+  });
+
+  it("holds a Refresh asked for mid-load until the load has finished", async () => {
+    const { loader, requested, release } = setup();
+    loader.load(null);
+    await release();
+    loader.load(null, { force: true });
+    await release();
+    await release();
+    // The full history finished first; only then did the refresh ask for the newest sales.
+    expect(requested).toEqual(["", "p2", "p3", ""]);
+    await release();
+    expect(loader.state.entry!.sales).toHaveLength(5);
+  });
+
+  it("tries a failed page again from where it got to, not from the newest sale", async () => {
+    const { loader, requested, release, failOnce } = setup();
+    failOnce.set("p2", 404);
+    loader.load(null);
+    await release(); // page 1 is kept
+    await release(); // page 2 fails
+    await release(); // page 2 again
+    await release(); // page 3
+    expect(requested).toEqual(["", "p2", "p2", "p3"]);
+    expect(loader.state.entry!.sales).toHaveLength(5);
+    expect(loader.state.error).toBeNull();
+  });
+
+  it("keeps one running count for the whole load", async () => {
+    const { loader, release } = setup();
+    loader.load(new Date(Date.now() - 60 * DAY));
+    await release();
+    await release(); // 60 days done: a and b
+    expect(loader.state.loading).toBe(false);
+
+    loader.load(null);
+    await release(); // carries on from page 2: c and d
+    // Counts on from the 2 already loaded, rather than starting again at 0.
+    expect(loader.state.progress).toMatch(/^Loading older sales… 4 sales loaded/);
+    await release();
+    expect(loader.state.entry!.sales).toHaveLength(5);
   });
 });

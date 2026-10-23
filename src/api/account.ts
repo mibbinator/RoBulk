@@ -8,7 +8,7 @@ interface AuthenticatedUser {
 }
 
 interface GroupRolesResponse {
-  data: { group: { id: number; name: string }; role: { rank: number } }[];
+  data: { group: { id: number; name: string; owner?: { userId: number } | null }; role: { rank: number } }[];
 }
 
 interface MembershipResponse {
@@ -62,16 +62,17 @@ export async function listCreators(client: RobloxClient): Promise<Creator[]> {
       const membership = await client.json<MembershipResponse>(`https://groups.roblox.com/v1/groups/${g.group.id}/membership`);
       const access = accessFromMembership(membership);
       if (!access.avatarItems && !access.experiences) return null;
-      return { type: "Group", id: g.group.id, name: g.group.name, access };
+      return { type: "Group", id: g.group.id, name: g.group.name, access, owned: g.group.owner?.userId === me.id };
     } catch {
       return null;
     }
   });
 
-  return [{ type: "User", id: me.id, name: me.name, access: FULL_ACCESS }, ...checked.filter((c): c is Creator => c !== null)];
+  return [{ type: "User", id: me.id, name: me.name, access: FULL_ACCESS, owned: true }, ...checked.filter((c): c is Creator => c !== null)];
 }
 
-const CREATORS_KEY = "creators";
+// Versioned so lists saved before group ownership was recorded are fetched again.
+const CREATORS_KEY = "creators:v2";
 const CREATORS_FRESH_MS = 60 * 60_000;
 
 /**
@@ -99,4 +100,18 @@ export async function findUser(client: RobloxClient, username: string): Promise<
     headers: { "Content-Type": "application/json" },
   });
   return res.data[0] ?? null;
+}
+
+/**
+ * The user's share of a group's recurring payouts, in percent: 0 when they
+ * get none, or null when their role isn't allowed to see the group's payouts.
+ *   GET groups.roblox.com/v1/groups/{groupId}/payouts
+ */
+export async function payoutPercentage(client: RobloxClient, groupId: number, userId: number): Promise<number | null> {
+  try {
+    const res = await client.json<{ data: { user: { userId: number }; percentage: number }[] }>(`https://groups.roblox.com/v1/groups/${groupId}/payouts`);
+    return res.data.find((p) => p.user.userId === userId)?.percentage ?? 0;
+  } catch {
+    return null;
+  }
 }

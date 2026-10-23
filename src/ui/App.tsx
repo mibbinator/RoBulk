@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import logoUrl from "../../public/icons/icon-48.png?inline";
 import { cachedCreators } from "../api/account";
+import { universeFromPath } from "../api/games";
 import { createClient } from "../api/http";
 import type { Creator } from "../api/types";
 import { readAlerts, type OffSaleAlert } from "../core/offSaleWatch";
@@ -56,6 +57,8 @@ export function App() {
     setTheme(detectTheme());
     setOpen(next);
   };
+  /** Opens RoBulk on the experience whose dashboard page this is, or on the clothing store. */
+  const openRoBulk = () => show({ kind: "robulk", opening: { universeId: universeFromPath(location.pathname) ?? undefined } });
   const review = (alert: OffSaleAlert) => show({ kind: "robulk", opening: { creatorKey: alert.creatorKey, stageOnSale: alert.items.map((i) => i.id) } });
 
   // RoBulk's entries under "All tools" in the dashboard's sidebar.
@@ -63,7 +66,7 @@ export function App() {
     if (!onDashboard) return;
     return watchSidebar(
       [
-        { id: ENTRY_ID, label: "RoBulk", ariaLabel: "Open RoBulk", iconUrl: logoUrl, onOpen: () => show({ kind: "robulk" }) },
+        { id: ENTRY_ID, label: "RoBulk", ariaLabel: "Open RoBulk", iconUrl: logoUrl, onOpen: openRoBulk },
         { id: OVERVIEW_ID, label: "Account Overview", shortLabel: "Overview", ariaLabel: "Open RoBulk's account overview", iconUrl: overviewIcon, onOpen: () => show({ kind: "overview" }) },
       ],
       setInSidebar,
@@ -149,7 +152,7 @@ export function App() {
     <div class="rb-root" data-theme={theme}>
       {onDashboard && <OffSaleBanner site="dashboard" storage={storage} onReview={review} />}
       {floating && (
-        <button class="rb-launcher" onClick={() => show({ kind: "robulk" })} title="Open RoBulk">
+        <button class="rb-launcher" onClick={openRoBulk} title="Open RoBulk">
           <img src={logoUrl} alt="" width={20} height={20} />
           RoBulk
         </button>

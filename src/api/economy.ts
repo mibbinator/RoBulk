@@ -50,9 +50,17 @@ async function getWithRetry<T>(client: RobloxClient, url: string, { onRateLimite
     try {
       return await client.json<T>(url);
     } catch (e) {
-      if (!(e instanceof RobloxApiError) || e.status !== 429 || attempt >= attempts || signal?.aborted) throw e;
-      onRateLimited?.();
-      await sleep(e.retryAfterMs ?? 3000 * 2 ** attempt, signal);
+      if (attempt >= attempts || signal?.aborted) throw e;
+      // Too many requests: wait as long as Roblox asks, and slow down.
+      if (e instanceof RobloxApiError && e.status === 429) {
+        onRateLimited?.();
+        await sleep(e.retryAfterMs ?? 3000 * 2 ** attempt, signal);
+        continue;
+      }
+      // A Roblox server error or a dropped connection is usually gone on the next try.
+      const transient = e instanceof RobloxApiError ? e.status >= 500 : e instanceof TypeError;
+      if (!transient) throw e;
+      await sleep(1500 * 2 ** attempt, signal);
     }
   }
 }
@@ -96,7 +104,8 @@ export interface TransactionResult {
 export async function listSales(
   client: RobloxClient,
   creator: Creator,
-  since: Date | null,
+  /** Where to stop; a function is asked again on every page, so a running load can be told to go further back. */
+  stopAt: Date | null | (() => Date | null),
   {
     maxPages = 60,
     fromCursor = "",
@@ -140,6 +149,7 @@ export async function listSales(
       if (signal?.aborted) break; // stopped while waiting out a rate limit: keep what's loaded
       throw e;
     }
+    const since = typeof stopAt === "function" ? stopAt() : stopAt;
     let reachedSince = false;
     for (const raw of res.data) {
       if (since && new Date(raw.created) < since) {

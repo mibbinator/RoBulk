@@ -950,3 +950,27 @@ a.rb-btn {
   margin-left: 8px;
   vertical-align: middle;
 }
+
+/* ---------- Experience report header ---------- */
+.rb-game-head {
+  margin-bottom: 16px;
+}
+.rb-game-head h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+.rb-game-head p {
+  margin: 0 0 10px;
+}
+.rb-scope-note {
+  margin: 0 0 12px;
+}
+
+.rb-table .rb-row-heading th {
+  padding-top: 14px;
+  color: var(--rb-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: none;
+}

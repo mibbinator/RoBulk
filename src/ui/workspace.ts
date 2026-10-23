@@ -6,9 +6,10 @@ import { listUnpublishedClothing, type UnpublishedItem } from "../api/creations"
 import { EXPERIENCE_CREATOR_SHARE, getCreatorSplitPercent } from "../api/economy";
 import { listDevProducts, listExperiences, listGamePasses } from "../api/experiences";
 import { createClient, type RobloxClient } from "../api/http";
+import { getGameStats, type GameStats } from "../api/games";
 import { getThumbnails } from "../api/thumbnails";
 import type { Creator, Experience, SellableItem } from "../api/types";
-import { summarize, type Bucket, type EarningsSummary } from "../core/earnings";
+import { summarize, transactionItemKey, type Bucket, type EarningsSummary, type SaleTransaction } from "../core/earnings";
 import { setEdits as stageEdits, type Edit } from "../core/edits";
 import { History, chromeStorage, memoryStorage, type StorageLike } from "../core/history";
 import { rememberOnSale } from "../core/offSaleWatch";
@@ -20,6 +21,10 @@ import { forgetSalesLoaders, salesLoader, type LoaderState, type SalesLoader } f
 
 // Everything the tabs share: who we're working on, their items, unsaved
 // edits, sales data and history. Lives in the panel shell.
+//
+// RoBulk shows one thing at a time: the creator's clothing store (avatar
+// items), or one experience (its game passes and developer products, its
+// stats, and the sales of those). The experience menu switches between them.
 
 export const creatorKey = (c: Creator) => `${c.type}:${c.id}`;
 const splitKey = (assetType: number, price: number) => `${assetType}:${price}`;
@@ -85,6 +90,8 @@ export const makeStorage = (): StorageLike =>
 /** How RoBulk was asked to open: on a particular creator, with items to put back on sale. */
 export interface Opening {
   creatorKey?: string;
+  /** Open on this experience (and the creator who owns it), e.g. when RoBulk is opened from its dashboard page. */
+  universeId?: number;
   /** Avatar item ids to stage "put on sale" for, once they've loaded. */
   stageOnSale?: number[];
 }
@@ -134,7 +141,31 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
   const salesWanted = useRef(false);
   const staged = useRef(false);
 
-  const items = useMemo(() => [...avatarItems, ...experienceItems], [avatarItems, experienceItems]);
+  /** What's on screen: the selected experience's passes and products, or the clothing store. */
+  const items = useMemo(() => (universeId != null ? experienceItems : avatarItems), [universeId, avatarItems, experienceItems]);
+  const pendingUniverse = useRef<number | null>(opening.universeId ?? initialUniverseId);
+
+  /** The selected experience's public stats (visits, players, favorites, votes). */
+  const [gameStats, setGameStats] = useState<GameStats | null>(null);
+  useEffect(() => {
+    setGameStats(null);
+    if (universeId == null) return;
+    let current = true;
+    getGameStats(client, universeId)
+      .then((g) => current && setGameStats(g))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [universeId]);
+
+  /** The loaded sales that belong to what's on screen: the experience's passes and products, or the store's avatar items. */
+  const scopedSales = useMemo((): SaleTransaction[] => {
+    const all = loaded?.entry?.sales ?? [];
+    if (universeId == null) return all.filter((t) => t.item.type !== "GamePass" && t.item.type !== "DeveloperProduct");
+    const keys = new Set(experienceItems.map((i) => i.key));
+    return all.filter((t) => keys.has(transactionItemKey(t)));
+  }, [loaded?.entry, universeId, experienceItems]);
 
   // Whatever RoBulk loads or saves is what the off-sale alarm compares against.
   useEffect(() => {
@@ -174,11 +205,14 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
       settingsRef.current = s;
       setSettings(s);
     });
+    // Opened on an experience: start on whoever owns it.
+    const owner = opening.universeId && !opening.creatorKey ? getGameStats(client, opening.universeId).catch(() => null) : Promise.resolve(null);
     listCreators(client)
       .then(async (list) => {
         await settingsLoaded;
+        const game = await owner;
         setCreators(list);
-        setCreator(initialCreator(list, opening.creatorKey));
+        setCreator(initialCreator(list, opening.creatorKey ?? (game ? `${game.creator.type}:${game.creator.id}` : undefined)));
       })
       .catch((e) => {
         setError(`Couldn't load your account: ${e.message}. Make sure you're logged in to Roblox.`);
@@ -200,8 +234,8 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     setEdits(new Map());
     setSplits(new Map());
     splitRequests.current.clear();
-    // Only one creator's sales load at a time; what's loaded is kept, so coming back carries on.
-    if (loader && loader.creator !== c) loader.stop();
+    // A load for the previous creator carries on behind this one's instead of stopping (or starting over later).
+    if (loader && loader.creator !== c) loader.demote();
     const next = c.access.earnings ? loaderFor(c) : null;
     setLoader(next);
     setLoaded(next?.state ?? null);
@@ -231,7 +265,10 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     }
     if (experienceResult.status === "fulfilled") {
       setExperiences(experienceResult.value);
-      setUniverseId(experienceResult.value.some((x) => x.universeId === initialUniverseId) ? initialUniverseId : null);
+      // The experience RoBulk was opened on, the first time round; after that, the clothing store.
+      const wanted = pendingUniverse.current;
+      pendingUniverse.current = null;
+      setUniverseId(experienceResult.value.some((x) => x.universeId === wanted) ? wanted : null);
     } else {
       setNotice(`Couldn't load experiences, so Game Passes and Developer Products are hidden: ${experienceResult.reason?.message ?? experienceResult.reason}`);
     }
@@ -295,7 +332,8 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
   const summary = useMemo(() => {
     const entry = loaded?.entry;
     if (!entry) return { since: null, current: null, previous: null };
-    const { sales: transactions, coveredFrom } = entry;
+    const { coveredFrom } = entry;
+    const transactions = scopedSales;
     const now = new Date();
     if (range === "all") {
       const first = coveredFrom ?? transactions.at(-1)?.created ?? now.toISOString();
@@ -306,7 +344,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     const prevEnd = new Date(start.getTime() - DAY);
     const prevStart = new Date(prevEnd.getTime() - (range - 1) * DAY);
     return { since: start.toISOString(), current: summarize(transactions, start, now, items), previous: summarize(transactions, prevStart, prevEnd, items) };
-  }, [loaded?.entry, range, items]);
+  }, [loaded?.entry, scopedSales, range, items]);
 
   const salesLoading = !!loaded?.loading;
   const sales: SalesState = {
@@ -399,6 +437,9 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     storage,
     /** Every sale loaded for the creator, newest first. */
     salesEntry: loaded?.entry ?? null,
+    /** Sales of what's on screen (the store or the selected experience), newest first. */
+    scopedSales,
+    gameStats,
     /** Makes sure sales back to `since` are loaded (for periods that aren't a report range). */
     loadSalesSince: (since: Date) => creator?.access.earnings && loaderFor(creator).load(since),
     savedSalesSize: () => salesCache.size(),

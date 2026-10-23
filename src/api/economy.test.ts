@@ -85,6 +85,19 @@ describe("economy", () => {
     }
   });
 
+  it("tries again after a Roblox server error instead of giving up", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      if (calls === 1) return new Response(JSON.stringify({ errors: [{ message: "Service unavailable" }] }), { status: 503 });
+      return new Response(JSON.stringify({ data: [raw("2026-10-22T00:00:00Z")], nextPageCursor: null }));
+    });
+    const res = await listSales(createClient(fetchImpl), group, null);
+    expect(calls).toBe(2);
+    expect(res.transactions).toHaveLength(1);
+    expect(res.reachedEnd).toBe(true);
+  }, 10000);
+
   it("stops while waiting out a rate limit and keeps what was loaded", async () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn(async (_url: string) => {

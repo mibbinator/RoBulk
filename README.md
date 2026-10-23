@@ -30,8 +30,12 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 - A count of new sales since you last opened the report, on the sidebar entry and at the top of the report
 - Every chart has a table view, and the report exports to .csv
 
+**Clothing store and experiences, kept apart**
+- RoBulk shows either your clothing store (avatar items and their sales) or one experience (its game passes and developer products, its stats and their sales). Opened from an experience's page on the dashboard, it opens on that experience
+
 **Account Overview**
 - Earnings, sales, pending Robux and balance for your account and every group you can see the revenue of, side by side, with totals
+- Your account and the groups you own come first; for groups you don't own, "Your share" is your recurring payout percentage of what they earned
 
 **Payouts** (groups)
 - Works out what each designer is owed: their share of what their items earned, since their last payout or for a month you pick
@@ -62,9 +66,9 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 
 1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
 2. Click **RoBulk** in the dashboard's left sidebar, just below **All tools**. (**Account Overview**, just below it, opens the side-by-side view of all your groups.) If the sidebar is hidden (in a narrow window, for example), a blue **RoBulk** button appears in the bottom-right corner instead. If you don't see either, refresh the page.
-3. Use the two menus at the top right:
+3. Use the two menus at the top right (if you open RoBulk from an experience's page in Creations, it starts on that experience):
    - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. RoBulk opens on whichever group you have selected in the Creator Dashboard (or on you, if you're viewing your own creations).
-   - **Experience:** starts on *No experience selected*. Pick a game to also show its passes and developer products, and to use the Create & copy and Badges tabs. Your avatar items show either way.
+   - **Store or experience:** *Clothing & accessories* is your store: avatar items and their sales. Pick an experience to switch to it instead: its game passes and developer products, its stats (visits, players, favorites, rating) and their sales, and the Create & copy and Badges tabs. The two are kept separate, so switching asks before discarding unsaved changes.
 
 Press **Esc** or click **✕** to close. If you have unsaved changes, RoBulk asks first.
 
@@ -127,7 +131,7 @@ Open the **Earnings report** tab. It loads your sales for the period you choose 
 
 Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
 
-**All time** adds up every sale since your first one, with weekly charts once your history is longer than 90 days. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store. The report fills in as sales arrive, and every page of sales is saved in your browser the moment it's loaded, so nothing is lost if you click **Stop**, close RoBulk, switch creators or leave the page: next time it carries on from where it got to. Clicking **All time** again while it loads doesn't start over, and closing RoBulk doesn't stop it. After that, RoBulk only fetches new sales.
+**All time** adds up every sale since your first one, with weekly charts once your history is longer than 90 days. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store. The report fills in as sales arrive, and every page of sales is saved in your browser the moment it's loaded, so nothing is lost if you click **Stop**, close RoBulk, switch creators or leave the page: next time it carries on from where it got to. A load never starts over: clicking **All time** again, picking a longer range, switching groups or a new sale coming in all leave it running, **Refresh** waits until it's finished, closing RoBulk doesn't stop it, and if Roblox fails part-way it tries again from the last page it got. After that, RoBulk only fetches new sales.
 
 RoBulk starts loading sales in the background as soon as you open it, so the report is usually ready by the time you click the tab. While it loads, a bar at the bottom of the panel shows progress and has a **Stop** button. You can turn background loading off in the **Options** tab.
 
@@ -194,6 +198,8 @@ Pay them on Roblox's payouts page (**Open Roblox payouts**), then click **Mark a
 ### 14. See all your groups at once (Account Overview)
 
 Click **Account Overview** in the dashboard's sidebar (or the button at the top of RoBulk), pick a period and press **Run report**. Nothing loads until you do. RoBulk loads the group you have selected on the dashboard first, then every other account and group one at a time, and shows earnings, change from the previous period, sales, pending Robux and balance side by side, with totals. **Open report** jumps to that group's Earnings report.
+
+Your account and the groups you own are listed first, then the groups you're a member of. For those, **Your share** is your recurring payout percentage of what the group earned (if your role can see the group's payouts; otherwise it says Hidden), and the **Your share** total adds it all up.
 
 Keep the tab open and stay on the Creator Dashboard while it runs; closing the tab or going to another site stops it (what's loaded is kept, so running it again carries on). The other groups always wait while your selected group, or anything you open in RoBulk, is loading, so they never slow each other down.
 

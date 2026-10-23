@@ -88,21 +88,21 @@ export function Shell({
               </select>
               <select
                 class="rb-select"
-                aria-label="Experience"
+                aria-label="Store or experience"
                 value={universeId == null ? "" : String(universeId)}
                 disabled={experiences.length === 0 || busy}
                 onChange={(e) => {
                   const raw = e.currentTarget.value;
-                  const hasExperienceEdits = [...edits.keys()].some((k) => !k.startsWith("avatar:"));
-                  if (hasExperienceEdits && !confirm("Switch experience? Unsaved game pass and product changes will be lost.")) {
+                  // The store and each experience are separate views, each with its own items and changes.
+                  if (!confirmDiscard(raw === "" ? "Switch to the clothing store" : "Switch experience")) {
                     e.currentTarget.value = universeId == null ? "" : String(universeId);
                     return;
                   }
-                  ws.setEdits((prev) => new Map([...prev].filter(([k]) => k.startsWith("avatar:"))));
+                  ws.setEdits(new Map());
                   ws.setUniverseId(raw === "" ? null : Number(raw));
                 }}
               >
-                <option value="">{experiences.length === 0 ? "No experiences" : "No experience selected"}</option>
+                <option value="">Clothing & accessories</option>
                 {experiences.map((x) => (
                   <option key={x.universeId} value={String(x.universeId)}>
                     Experience: {x.name}

@@ -11,6 +11,8 @@ RoBulk runs on create.roblox.com and www.roblox.com. On create.roblox.com it rea
 - your user id and name, and the groups you belong to along with your role's permissions
 - the avatar items, experiences, game passes, developer products and badges you can manage
 - the names and review status of classic clothing you uploaded, to warn about items that aren't published yet
+- public stats of your experiences (visits, players, favorites, likes)
+- your recurring payout percentage in groups you don't own, for the Account Overview
 - sale transactions and Robux balance, if you have permission to see them
 - which group you last selected in the Creator Dashboard (read from the page itself), so RoBulk can open on the same one
 

@@ -87,6 +87,10 @@ function fakeRoblox() {
       });
     }
     if (url.includes("economy.roblox.com/v1/users/1/currency")) return json({ robux: 1234 });
+    if (url.includes("games.roblox.com/v1/games/votes")) return json({ data: [{ id: 42, upVotes: 90, downVotes: 10 }] });
+    if (url.includes("games.roblox.com/v1/games?universeIds=42")) {
+      return json({ data: [{ id: 42, name: "My Game", creator: { id: 1, type: "User", name: "me" }, visits: 12345, playing: 7, favoritedCount: 321, created: daysAgo(400), updated: daysAgo(2) }] });
+    }
     // One shirt uploaded and approved but never published.
     if (url.includes("/v1/creations/get-assets")) {
       return json({ data: url.includes("assetType=Shirt") ? [{ assetId: 101, name: "Off-sale shirt" }, { assetId: 900, name: "Draft shirt" }] : [] });
@@ -143,12 +147,10 @@ describe("Shell", () => {
     const { root, calls } = mount();
 
     await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
-    // No experience is picked until the user chooses one.
-    await waitFor(() => root.querySelector<HTMLSelectElement>('select[aria-label="Experience"] option[value="42"]'));
-    expect(root.querySelector<HTMLSelectElement>('select[aria-label="Experience"]')!.value).toBe("");
+    // RoBulk opens on the clothing store; experiences are separate views.
+    await waitFor(() => root.querySelector<HTMLSelectElement>('select[aria-label="Store or experience"] option[value="42"]'));
+    expect(root.querySelector<HTMLSelectElement>('select[aria-label="Store or experience"]')!.value).toBe("");
     expect(byText(root, ".rb-group-toggle", /Game Passes/)).toBeFalsy();
-    choose(root, "Experience", "42");
-    await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
     // Per-sale earnings use the share for each item's own price.
     await waitFor(() => byText(root, ".rb-was", "you get R$1")); // 30% of R$5
     await waitFor(() => byText(root, ".rb-was", "you get R$10")); // 70% of R$15
@@ -156,11 +158,10 @@ describe("Shell", () => {
     byText(root, ".rb-segmented button", "Off sale")!.click();
     await waitFor(() => !byText(root, ".rb-name a", "On-sale shirt"));
     byText(root, ".rb-toolbar button", "Select all")!.click();
-    await waitFor(() => byText(root, ".rb-selection", "2 selected"));
+    await waitFor(() => byText(root, ".rb-selection", "1 selected"));
     byText(root, ".rb-actions button", "Put on sale")!.click();
-
-    (await waitFor(() => byText(root, ".rb-btn-primary", "Save 2 changes"))).click();
-    await waitFor(() => byText(root, ".rb-progress span", /^Saved 2 of 2\./));
+    (await waitFor(() => byText(root, ".rb-btn-primary", "Save 1 change"))).click();
+    await waitFor(() => byText(root, ".rb-progress span", /^Saved 1 of 1\./));
 
     const collectiblePatch = calls.find((c) => c.method === "PATCH" && c.url.endsWith("/v1/collectibles/uuid-shirt") && c.body)!;
     expect(collectiblePatch.body).toEqual({
@@ -173,17 +174,27 @@ describe("Shell", () => {
       isFree: false,
       optOutFromRegionalPricing: true, // read from the item, not reset
     });
+    expect(calls.some((c) => c.method === "PATCH" && c.url.includes("uuid-2"))).toBe(false);
+
+    // The experience shows only its passes and products.
+    choose(root, "Store or experience", "42");
+    await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
+    expect(byText(root, ".rb-group-toggle", /Classic Shirts/)).toBeFalsy();
+    byText(root, ".rb-toolbar button", "Select all")!.click();
+    await waitFor(() => byText(root, ".rb-selection", "1 selected"));
+    byText(root, ".rb-actions button", "Put on sale")!.click();
+    (await waitFor(() => byText(root, ".rb-btn-primary", "Save 1 change"))).click();
+    // (The shirt save's "Saved 1 of 1" is still showing, so wait for the request itself.)
+    await waitFor(() => calls.some((c) => c.method === "PATCH" && c.url.includes("/game-passes/7")));
     const passPatches = calls.filter((c) => c.method === "PATCH" && c.url.includes("/game-passes/7"));
     expect(passPatches.at(-1)!.url).toBe("https://apis.roblox.com/game-passes/v1/universes/42/game-passes/7");
     expect(passPatches.at(-1)!.body).toEqual({ isForSale: "true" });
-    expect(calls.some((c) => c.method === "PATCH" && c.url.includes("uuid-2"))).toBe(false);
 
-    // The save shows up in History, with a "before" snapshot to undo it.
+    // The saves show up in History, with a "before" snapshot to undo them.
     byText(root, ".rb-tabs button", "History")!.click();
     await waitFor(() => byText(root, "td", "Before a save"));
     byText(root, ".rb-segmented button", "Activity log")!.click();
-    await waitFor(() => byText(root, "td", "Off-sale shirt"));
-    expect(byText(root, "td", "VIP")).toBeTruthy();
+    await waitFor(() => byText(root, "td", "VIP"));
   }, 20000);
 
   it("opens on the group selected in the Creator Dashboard", async () => {
@@ -202,13 +213,13 @@ describe("Shell", () => {
 
     byText(root, ".rb-segmented button", "Last 7 days")!.click();
     const week = await waitFor(() => byText(root, ".rb-stat", /Earned, last 7 days/));
-    expect(week.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    expect(week.querySelector(".rb-stat-value")!.textContent).toBe("R$8");
     expect(root.querySelector(".is-refreshing")).toBeNull();
     expect(transactionCalls(calls)).toBe(fetches);
 
     byText(root, ".rb-segmented button", "All time")!.click();
     const all = await waitFor(() => byText(root, ".rb-stat", /Earned, all time/));
-    expect(all.querySelector(".rb-stat-value")!.textContent).toBe("R$86"); // every sale, including 40 and 70 days ago
+    expect(all.querySelector(".rb-stat-value")!.textContent).toBe("R$16"); // every shirt sale, including 40 and 70 days ago
     expect(all.querySelector(".rb-stat-hint")!.textContent).toMatch(/^Since /);
     expect(all.querySelector(".rb-stat-delta")).toBeNull(); // nothing to compare all-time with
 
@@ -237,7 +248,7 @@ describe("Shell", () => {
     await waitFor(() => byText(root, ".rb-meta-btn", /2 sold/));
     byText(root, ".rb-tabs button", "Earnings report")!.click();
     const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
-    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$8");
     expect(transactionCalls(calls)).toBe(fetches);
 
     // Refresh is the way to fetch again.
@@ -264,15 +275,26 @@ describe("Shell", () => {
     byText(root, ".rb-tabs button", "Earnings report")!.click();
 
     const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
-    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    // The clothing store's own sales: two shirts this month.
+    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$8");
     // Previous 30 days had one R$4 sale.
-    expect(earned.querySelector(".rb-stat-delta")!.textContent).toMatch(/▲ 1850% vs previous period/);
-    expect(byText(root, ".rb-stat", /^Sales/)!.querySelector(".rb-stat-value")!.textContent).toBe("3");
+    expect(earned.querySelector(".rb-stat-delta")!.textContent).toMatch(/▲ 100% vs previous period/);
+    expect(byText(root, ".rb-stat", /^Sales/)!.querySelector(".rb-stat-value")!.textContent).toBe("2");
     expect(byText(root, ".rb-stat", /Current balance/)!.querySelector(".rb-stat-value")!.textContent).toBe("R$1,234");
-
     // Category legend carries labels and values (not color alone).
-    expect(byText(root, ".rb-legend li", /Game Passes\s*R\$70/)).toBeTruthy();
     expect(byText(root, ".rb-legend li", /Classic Shirts\s*R\$8/)).toBeTruthy();
+    expect(byText(root, ".rb-legend li", /Game Passes/)).toBeFalsy();
+
+    // The experience's report: its game pass sale and its stats, without asking Roblox for sales again.
+    choose(root, "Store or experience", "42");
+    const gameEarned = await waitFor(() => {
+      const tile = byText(root, ".rb-stat", /Earned, last 30 days/);
+      return tile?.querySelector(".rb-stat-value")!.textContent === "R$70" && tile;
+    });
+    expect(gameEarned).toBeTruthy();
+    await waitFor(() => byText(root, ".rb-stat", /Visits/));
+    expect(byText(root, ".rb-stat", /Visits/)!.querySelector(".rb-stat-value")!.textContent).toBe("12,345");
+    expect(byText(root, ".rb-stat", /Rating/)!.querySelector(".rb-stat-value")!.textContent).toBe("90%");
     expect(byText(root, "td a", "buyer1")).toBeTruthy();
   }, 20000);
   it("loads sales in the background, and the Options tab can switch features off", async () => {
@@ -316,5 +338,17 @@ describe("Shell", () => {
     // 101 is the off-sale shirt: it's staged on sale, ready to review and save.
     await waitFor(() => byText(root, ".rb-tab-badge", "1"));
     expect(byText(root, ".rb-tabs button", /Items/)!.textContent).toContain("1");
+  }, 20000);
+  it("opens on the experience whose dashboard page RoBulk was opened from", async () => {
+    const { fetchImpl } = fakeRoblox();
+    vi.stubGlobal("fetch", fetchImpl);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    render(<Shell onClose={() => {}} opening={{ universeId: 42 }} />, root);
+
+    await waitFor(() => root.querySelector<HTMLSelectElement>('select[aria-label="Store or experience"]')?.value === "42");
+    await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
+    expect(byText(root, ".rb-group-toggle", /Classic Shirts/)).toBeFalsy();
   }, 20000);
 });

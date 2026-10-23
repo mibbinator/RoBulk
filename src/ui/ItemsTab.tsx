@@ -325,7 +325,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
         </div>
       )}
 
-      {ws.unpublished.length > 0 && <UnpublishedWarning items={ws.unpublished} />}
+      {ws.unpublished.length > 0 && ws.universeId == null && <UnpublishedWarning items={ws.unpublished} />}
 
       <main class="rb-body">
         {loading && items.length === 0 && <div class="rb-empty">Loading items…</div>}

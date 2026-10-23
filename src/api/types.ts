@@ -15,6 +15,8 @@ export interface Creator {
   id: number;
   name: string;
   access: CreatorAccess;
+  /** The signed-in user owns it (always true for their own account). */
+  owned?: boolean;
 }
 
 export interface Experience {

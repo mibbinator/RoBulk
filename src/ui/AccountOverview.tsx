@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { cachedCreators } from "../api/account";
+import { cachedCreators, payoutPercentage } from "../api/account";
 import { createClient } from "../api/http";
 import type { Creator } from "../api/types";
 import { change, summarize, type EarningsSummary } from "../core/earnings";
@@ -17,11 +17,20 @@ import { creatorKey, initialCreator, makeStorage, rangeLabel, type ReportRange }
 // loads, which wait whenever the selected group (or anything the RoBulk panel
 // asks for) is loading, so they never page through Roblox at the same time.
 // Each one's sales are kept for the page visit like the Earnings report's.
+//
+// The table lists the user's own account and the groups they own first. For
+// groups they're only a member of, "Your share" is their recurring payout
+// percentage of what the group earned.
 
 const DAY = 86_400_000;
 
 interface Row {
   creator: Creator;
+  owned: boolean;
+  /** Recurring payout percentage for a group the user doesn't own; null when their role can't see it. */
+  percent: number | null;
+  /** What the user gets: everything for what they own, their payout percentage of the rest. */
+  share: number | null;
   loader: SalesLoader;
   current: EarningsSummary | null;
   previous: EarningsSummary | null;
@@ -62,6 +71,8 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
   const [current, setCurrent] = useState<string | null>(null);
   /** The group the dashboard has selected; its load is RoBulk's own, not the report's. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** Recurring payout percentage for each group the user doesn't own (null: not allowed to see it). */
+  const [percents, setPercents] = useState<Map<string, number | null>>(new Map());
   const cancelled = useRef(false);
   /** Bumped when any loader changes, a few times a second at most. */
   const [tick, setTick] = useState(0);
@@ -131,6 +142,13 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
       const list = ordered.map((c) => salesLoader(c, client, cache, () => settings.rememberSales));
       setLoaders(list);
 
+      // For groups the user doesn't own: their cut of the group's recurring payouts.
+      const me = all.find((c) => c.type === "User");
+      setCurrent("Checking your payout share in groups you don't own…");
+      const notOwned = visible.filter((c) => c.type === "Group" && !c.owned);
+      const found = await Promise.all(notOwned.map(async (c) => [creatorKey(c), me ? await payoutPercentage(client, c.id, me.id) : null] as const));
+      setPercents(new Map(found));
+
       const want = wantFor(range);
       for (const loader of list) {
         if (cancelled.current) return;
@@ -148,7 +166,20 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
   };
 
   const shown = ranFor ?? range;
-  const rows: Row[] = useMemo(() => loaders.map((loader) => ({ creator: loader.creator, loader, ...summaries(loader, shown) })), [loaders, shown, tick]);
+  const rows: Row[] = useMemo(() => {
+    const list = loaders.map((loader): Row => {
+      const owned = loader.creator.type === "User" || loader.creator.owned === true;
+      const sums = summaries(loader, shown);
+      const percent = owned ? 100 : (percents.get(creatorKey(loader.creator)) ?? null);
+      const earned = sums.current?.totalRobux ?? 0;
+      return { creator: loader.creator, loader, owned, percent, share: percent == null ? null : Math.floor((earned * percent) / 100), ...sums };
+    });
+    // Your account, then the groups you own, then the rest.
+    const rank = (r: Row) => (r.creator.type === "User" ? 0 : r.owned ? 1 : 2);
+    return list.sort((a, b) => rank(a) - rank(b));
+  }, [loaders, shown, tick, percents]);
+  const totalShare = rows.reduce((sum, r) => sum + (r.share ?? 0), 0);
+  const unknownShares = rows.filter((r) => r.share == null).length;
   const total = rows.reduce((sum, r) => sum + (r.current?.totalRobux ?? 0), 0);
   const totalPrev = rows.reduce((sum, r) => sum + (r.previous?.totalRobux ?? 0), 0);
   const totalSales = rows.reduce((sum, r) => sum + (r.current?.sales ?? 0), 0);
@@ -158,9 +189,13 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
   const doneCount = rows.filter((r) => r.complete && !r.loader.state.loading).length;
 
   const exportCsv = () => {
-    const lines = [["creator", "earned", "sales", "pending", "balance"].join(",")];
+    const lines = [["creator", "owned", "earned", "your share %", "your share", "sales", "pending", "balance"].join(",")];
     for (const r of rows) {
-      lines.push([csvCell(r.creator.name), r.current?.totalRobux ?? 0, r.current?.sales ?? 0, r.current?.pendingRobux ?? 0, r.loader.state.balance ?? ""].map(String).join(","));
+      lines.push(
+        [csvCell(r.creator.name), r.owned ? "yes" : "no", r.current?.totalRobux ?? 0, r.percent ?? "", r.share ?? "", r.current?.sales ?? 0, r.current?.pendingRobux ?? 0, r.loader.state.balance ?? ""]
+          .map(String)
+          .join(","),
+      );
     }
     downloadText(`account-overview-${shown === "all" ? "all-time" : `${shown}d`}.csv`, lines.join("\r\n") + "\r\n", "text/csv");
   };
@@ -260,6 +295,14 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                   </span>
                 </div>
                 <div class="rb-stat">
+                  <span class="rb-stat-label">Your share</span>
+                  <strong class="rb-stat-value">{robux(totalShare)}</strong>
+                  <span class="rb-stat-hint">
+                    Everything from what you own, plus your payout share of other groups
+                    {unknownShares > 0 ? ` (${unknownShares} ${unknownShares === 1 ? "group hides" : "groups hide"} their payouts from your role)` : ""}
+                  </span>
+                </div>
+                <div class="rb-stat">
                   <span class="rb-stat-label">Sales</span>
                   <strong class="rb-stat-value">{totalSales.toLocaleString()}</strong>
                 </div>
@@ -284,6 +327,7 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                         <th>Account or group</th>
                         <th>Earned, {rangeLabel(shown)}</th>
                         <th class="num">Change</th>
+                        <th class="num">Your share</th>
                         <th class="num">Sales</th>
                         <th class="num">Pending</th>
                         <th class="num">Balance</th>
@@ -291,11 +335,19 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((r) => {
+                      {rows.map((r, i) => {
                         const earned = r.current?.totalRobux ?? 0;
+                        // A heading where the groups you don't own start.
+                        const heading =
+                          i === 0 || (rows[i - 1].owned && !r.owned) ? (
+                            <tr class="rb-row-heading" key={`h-${r.owned}`}>
+                              <th colSpan={8}>{r.owned ? "Your account and groups you own" : "Groups you don't own: your share is your recurring payout percentage"}</th>
+                            </tr>
+                          ) : null;
                         const delta = r.previous && r.complete ? change(earned, r.previous.totalRobux) : undefined;
                         const { loading, progress } = r.loader.state;
-                        return (
+                        return [
+                          heading,
                           <tr key={creatorKey(r.creator)}>
                             <td>
                               <strong>{r.creator.type === "User" ? `${r.creator.name} (you)` : r.creator.name}</strong>
@@ -315,6 +367,17 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                             <td class="num">
                               {delta === undefined ? "—" : delta == null ? "New" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(delta * 100))}%`}
                             </td>
+                            <td class="num">
+                              {r.owned ? (
+                                r.current ? robux(earned) : "—"
+                              ) : r.percent == null ? (
+                                <span class="rb-muted" title="Your role in this group can't see its payout percentages">Hidden</span>
+                              ) : (
+                                <span title={`${r.percent}% recurring payout`}>
+                                  {r.current ? robux(r.share ?? 0) : "—"} <span class="rb-muted rb-small">({r.percent}%)</span>
+                                </span>
+                              )}
+                            </td>
                             <td class="num">{r.current ? r.current.sales.toLocaleString() : "—"}</td>
                             <td class="num">{r.current ? robux(r.current.pendingRobux) : "—"}</td>
                             <td class="num">{r.loader.state.balance == null ? "—" : robux(r.loader.state.balance)}</td>
@@ -323,8 +386,8 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                                 Open report
                               </button>
                             </td>
-                          </tr>
-                        );
+                          </tr>,
+                        ];
                       })}
                     </tbody>
                   </table>
