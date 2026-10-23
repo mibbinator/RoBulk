@@ -1,0 +1,32 @@
+Copyright (c) 2026 mibbinator. All rights reserved.
+
+RoBulk is source-available: the code is published so anyone can read it and
+check exactly what the extension does with their Roblox account. Publishing
+the code does not grant a license to use it beyond what is listed below.
+
+You may:
+
+  - view and read the source code;
+  - build and run it on your own computer to review or audit it.
+
+You may not, without prior written permission from the copyright holder:
+
+  - copy, modify, merge or distribute this software or any substantial part
+    of it;
+  - publish it, or anything derived from it, on the Chrome Web Store, Firefox
+    Add-ons, Microsoft Edge Add-ons or any other distribution channel;
+  - sell, sublicense or otherwise commercialise it.
+
+GitHub's Terms of Service let GitHub users view and fork public repositories
+on GitHub. That does not grant any of the rights listed above as reserved.
+
+Contributions: by submitting a pull request or patch, you agree that the
+copyright holder may use, modify and distribute your contribution as part of
+RoBulk under any terms.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

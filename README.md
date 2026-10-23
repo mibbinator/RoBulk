@@ -69,6 +69,12 @@ Roblox has no bulk endpoint, so RoBulk sends one request per item through your e
 
 RoBulk has no servers, analytics or accounts. It only talks to Roblox, using the login you already have, and keeps snapshots and the activity log in your browser's extension storage. See [PRIVACY.md](PRIVACY.md).
 
+## License
+
+Copyright (c) 2026 mibbinator. All rights reserved.
+
+The source is public so you can see exactly what RoBulk does with your account, but it isn't open for reuse: you can read, build and audit it, not copy, redistribute or publish it. See [LICENSE](LICENSE).
+
 ## Disclaimer
 
 RoBulk is not affiliated with, endorsed by, or sponsored by Roblox Corporation.
