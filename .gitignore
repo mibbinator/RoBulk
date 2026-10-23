@@ -13,3 +13,6 @@ Thumbs.db
 release/
 dist-firefox/
 dist-preview/
+
+# Local release notes (not published)
+RELEASING.md

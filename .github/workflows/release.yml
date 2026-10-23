@@ -1,7 +1,7 @@
 name: Release
 
 # Runs when a version tag (v1.2.3) is pushed, usually by `npm run release`.
-# Store publishing steps are skipped until their secrets are added; see RELEASING.md.
+# Store publishing steps are skipped until their secrets are added.
 
 on:
   push:
