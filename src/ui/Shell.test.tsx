@@ -45,7 +45,10 @@ function fakeRoblox() {
       return json({ errors: [{ message: "XSRF token invalid" }] }, 403, { "x-csrf-token": "tok" });
     }
     if (url.includes("users.roblox.com/v1/users/authenticated")) return json({ id: 1, name: "me", displayName: "Me" });
-    if (url.includes("groups.roblox.com")) return json({ data: [] });
+    if (url.includes("groups.roblox.com/v1/users/1/groups/roles")) return json({ data: [{ group: { id: 9, name: "Test Group" }, role: { rank: 255 } }] });
+    if (url.includes("groups.roblox.com/v1/groups/9/membership")) {
+      return json({ permissions: { groupEconomyPermissions: { manageItems: true, manageGroupGames: true, viewGroupPayouts: true } } });
+    }
     if (url.includes("catalog.roblox.com/v2/search")) {
       return json({
         nextPageCursor: null,
@@ -103,6 +106,14 @@ async function waitFor<T>(fn: () => T | null | undefined | false, timeout = 8000
 const byText = (root: ParentNode, selector: string, text: string | RegExp) =>
   [...root.querySelectorAll<HTMLElement>(selector)].find((el) => (typeof text === "string" ? el.textContent?.trim() === text : text.test(el.textContent ?? "")));
 
+function choose(root: ParentNode, label: string, value: string) {
+  const select = root.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+const transactionCalls = (calls: Call[]) => calls.filter((c) => c.url.includes("/transactions")).length;
+
 function mount() {
   const { fetchImpl, calls } = fakeRoblox();
   vi.stubGlobal("fetch", fetchImpl);
@@ -114,6 +125,7 @@ function mount() {
 }
 
 afterEach(() => {
+  localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.body.innerHTML = "";
@@ -124,6 +136,11 @@ describe("Shell", () => {
     const { root, calls } = mount();
 
     await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+    // No experience is picked until the user chooses one.
+    await waitFor(() => root.querySelector<HTMLSelectElement>('select[aria-label="Experience"] option[value="42"]'));
+    expect(root.querySelector<HTMLSelectElement>('select[aria-label="Experience"]')!.value).toBe("");
+    expect(byText(root, ".rb-group-toggle", /Game Passes/)).toBeFalsy();
+    choose(root, "Experience", "42");
     await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
     // Per-sale earnings use the share for each item's own price.
     await waitFor(() => byText(root, ".rb-was", "you get R$1")); // 30% of R$5
@@ -160,6 +177,41 @@ describe("Shell", () => {
     byText(root, ".rb-segmented button", "Activity log")!.click();
     await waitFor(() => byText(root, "td", "Off-sale shirt"));
     expect(byText(root, "td", "VIP")).toBeTruthy();
+  }, 20000);
+
+  it("opens on the group selected in the Creator Dashboard", async () => {
+    localStorage.setItem("creatorHubGroup.1", "9");
+    const { root } = mount();
+
+    await waitFor(() => root.querySelector<HTMLSelectElement>('select[aria-label="Creator"]')?.value === "Group:9");
+  }, 20000);
+
+  it("switches report ranges instantly, without re-fetching or dimming", async () => {
+    const { root, calls } = mount();
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+    byText(root, ".rb-tabs button", "Earnings report")!.click();
+    await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    const fetches = transactionCalls(calls);
+
+    byText(root, ".rb-segmented button", "Last 7 days")!.click();
+    const week = await waitFor(() => byText(root, ".rb-stat", /Earned, last 7 days/));
+    expect(week.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    expect(root.querySelector(".is-refreshing")).toBeNull();
+    expect(transactionCalls(calls)).toBe(fetches);
+
+    byText(root, ".rb-segmented button", "All time")!.click();
+    const all = await waitFor(() => byText(root, ".rb-stat", /Earned, all time/));
+    expect(all.querySelector(".rb-stat-value")!.textContent).toBe("R$86"); // every sale, including 40 and 70 days ago
+    expect(all.querySelector(".rb-stat-hint")!.textContent).toMatch(/^Since /);
+    expect(all.querySelector(".rb-stat-delta")).toBeNull(); // nothing to compare all-time with
+
+    // 7 days came from the sales already loaded; all time needed one fetch for the older history.
+    expect(transactionCalls(calls)).toBe(fetches + 1);
+
+    // Now everything is loaded, so going back to 30 days needs no fetch at all.
+    byText(root, ".rb-segmented button", "Last 30 days")!.click();
+    await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    expect(transactionCalls(calls)).toBe(fetches + 1);
   }, 20000);
 
   it("looks up the creator share again when a price is changed", async () => {

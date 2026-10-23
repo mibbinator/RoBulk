@@ -53,18 +53,23 @@ export interface TransactionProgress {
 
 export interface TransactionResult {
   transactions: SaleTransaction[];
-  /** True when the page limit cut the history short of `since`. */
+  /** Paging stopped at `since`. */
+  reachedSince: boolean;
+  /** Paging reached the very first sale. */
+  reachedEnd: boolean;
+  /** The page limit or a stop request cut the history short. */
   truncated: boolean;
 }
 
 /**
- * Sale transactions from newest back to `since`. Roblox only pages through
- * history, so a cap keeps very busy stores from taking minutes.
+ * Sale transactions from newest back to `since` (or all of them when `since`
+ * is null). Roblox only pages through history, newest first, so a page cap
+ * keeps very busy stores from running for ages.
  */
 export async function listSales(
   client: RobloxClient,
   creator: Creator,
-  since: Date,
+  since: Date | null,
   { maxPages = 60, onProgress, signal }: { maxPages?: number; onProgress?: (p: TransactionProgress) => void; signal?: AbortSignal } = {},
 ): Promise<TransactionResult> {
   const base =
@@ -78,21 +83,22 @@ export async function listSales(
     const params = new URLSearchParams({ transactionType: "Sale", limit: "100" });
     if (cursor) params.set("cursor", cursor);
     const res = await getWithRetry<TransactionPage>(client, `${base}?${params}`);
-    let reachedStart = false;
+    let reachedSince = false;
     for (const raw of res.data) {
-      if (new Date(raw.created) < since) {
-        reachedStart = true;
+      if (since && new Date(raw.created) < since) {
+        reachedSince = true;
         break;
       }
       const t = toSaleTransaction(raw);
       if (t) transactions.push(t);
     }
     onProgress?.({ pages: page + 1, sales: transactions.length, oldest: transactions.at(-1)?.created ?? null });
-    if (reachedStart || !res.nextPageCursor) return { transactions, truncated: false };
+    if (reachedSince) return { transactions, reachedSince, reachedEnd: false, truncated: false };
+    if (!res.nextPageCursor) return { transactions, reachedSince: false, reachedEnd: true, truncated: false };
     cursor = res.nextPageCursor;
     await sleep(350);
   }
-  return { transactions, truncated: true };
+  return { transactions, reachedSince: false, reachedEnd: false, truncated: true };
 }
 
 /** Current Robux balance (group funds or the user's own balance). */

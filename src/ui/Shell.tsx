@@ -16,8 +16,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "history", label: "History" },
 ];
 
-export function Shell({ onClose, initialTab = "items" }: { onClose: () => void; initialTab?: TabId }) {
-  const ws = useWorkspaceState();
+export function Shell({ onClose, initialTab = "items", initialUniverseId = null }: { onClose: () => void; initialTab?: TabId; initialUniverseId?: number | null }) {
+  const ws = useWorkspaceState(initialUniverseId);
   const [tab, setTab] = useState<TabId>(initialTab);
   const [busy, setBusy] = useState(false);
   const { creators, creator, experiences, universeId, edits } = ws;

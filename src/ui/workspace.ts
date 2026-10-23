@@ -10,6 +10,8 @@ import type { Creator, Experience, SellableItem } from "../api/types";
 import { summarize, type EarningsSummary, type SaleTransaction } from "../core/earnings";
 import type { Edit } from "../core/edits";
 import { History, chromeStorage, memoryStorage } from "../core/history";
+import { SalesCache, cacheCovers, mergeFetched, planFetch } from "../core/salesCache";
+import { dashboardGroupId } from "./dashboardGroup";
 
 // Everything the tabs share: who we're working on, their items, unsaved
 // edits, sales data and history. Lives in the panel shell.
@@ -17,10 +19,18 @@ import { History, chromeStorage, memoryStorage } from "../core/history";
 export const creatorKey = (c: Creator) => `${c.type}:${c.id}`;
 const splitKey = (assetType: number, price: number) => `${assetType}:${price}`;
 
-export type RangeDays = 7 | 30 | 90;
+const DAY = 86_400_000;
+/** Sales loaded this recently are reused as-is when switching report ranges. */
+const FRESH_MS = 5 * 60_000;
+
+export type ReportRange = 7 | 30 | 90 | "all";
+
+export const rangeLabel = (range: ReportRange) => (range === "all" ? "all time" : `last ${range} days`);
 
 export interface SalesState {
-  range: RangeDays;
+  range: ReportRange;
+  /** Start of the period shown (for all time, the first sale or how far loading got). */
+  since: string | null;
   loading: boolean;
   progress: string | null;
   error: string | null;
@@ -31,16 +41,20 @@ export interface SalesState {
   loadedAt: Date | null;
 }
 
+/** Opens on the group the Creator Dashboard has selected, if the user can manage it. */
 function initialCreator(creators: Creator[]): Creator {
-  const groupId = Number(new URLSearchParams(location.search).get("groupId"));
+  const groupId = dashboardGroupId(creators[0].id);
   return creators.find((c) => c.type === "Group" && c.id === groupId) ?? creators[0];
 }
 
-const makeHistory = () => new History(typeof chrome !== "undefined" && chrome.storage?.local ? chromeStorage() : memoryStorage());
+const makeStorage = () => (typeof chrome !== "undefined" && chrome.storage?.local ? chromeStorage() : memoryStorage());
 
-export function useWorkspaceState() {
+/** `initialUniverseId` preselects an experience (used by the preview page); otherwise none is selected. */
+export function useWorkspaceState(initialUniverseId: number | null = null) {
   const client = useMemo<RobloxClient>(() => createClient(), []);
-  const history = useMemo(makeHistory, []);
+  const storage = useMemo(makeStorage, []);
+  const history = useMemo(() => new History(storage), [storage]);
+  const salesCache = useMemo(() => new SalesCache(storage), [storage]);
 
   const [creators, setCreators] = useState<Creator[] | null>(null);
   const [creator, setCreator] = useState<Creator | null>(null);
@@ -64,10 +78,14 @@ export function useWorkspaceState() {
   const splitRequests = useRef(new Set<string>());
 
   const [sales, setSales] = useState<SalesState>({
-    range: 30, loading: false, progress: null, error: null, truncated: false, current: null, previous: null, balance: null, loadedAt: null,
+    range: 30, since: null, loading: false, progress: null, error: null, truncated: false, current: null, previous: null, balance: null, loadedAt: null,
   });
   const salesAbort = useRef<AbortController | null>(null);
+  /** Set by "Stop": keep and show what was loaded instead of discarding it. */
+  const salesStopped = useRef(false);
   const transactionsRef = useRef<SaleTransaction[]>([]);
+  /** How far back the loaded sales are complete (null = the whole history). */
+  const coverageRef = useRef<string | null>(null);
   /** Set once anything asks for sales, so switching creator reloads them. */
   const salesWanted = useRef(false);
 
@@ -126,7 +144,8 @@ export function useWorkspaceState() {
     splitRequests.current.clear();
     salesAbort.current?.abort();
     transactionsRef.current = [];
-    setSales((s) => ({ ...s, current: null, previous: null, balance: null, loadedAt: null, error: null, truncated: false, loading: false, progress: null }));
+    coverageRef.current = null;
+    setSales((s) => ({ ...s, since: null, current: null, previous: null, balance: null, loadedAt: null, error: null, truncated: false, loading: false, progress: null }));
 
     const [avatarResult, experienceResult] = await Promise.allSettled([
       c.access.avatarItems ? listAvatarItems(client, c) : Promise.resolve([]),
@@ -142,7 +161,7 @@ export function useWorkspaceState() {
     }
     if (experienceResult.status === "fulfilled") {
       setExperiences(experienceResult.value);
-      setUniverseId(experienceResult.value[0]?.universeId ?? null);
+      setUniverseId(experienceResult.value.some((x) => x.universeId === initialUniverseId) ? initialUniverseId : null);
     } else {
       setNotice(`Couldn't load experiences, so Game Passes and Developer Products are hidden: ${experienceResult.reason?.message ?? experienceResult.reason}`);
     }
@@ -173,16 +192,20 @@ export function useWorkspaceState() {
     loadExperience(universeId);
   }, [universeId]);
 
-  /** Re-summarizes already-loaded transactions (e.g. after items load, for categories). */
-  const resummarize = (range: RangeDays, transactions = transactionsRef.current) => {
+  /** Summarizes the loaded transactions for a range (and the period before it, for comparison). */
+  const resummarize = (range: ReportRange, transactions = transactionsRef.current, coveredFrom = coverageRef.current) => {
     const now = new Date();
-    const start = new Date(now.getTime() - (range - 1) * 86400000);
-    const prevEnd = new Date(start.getTime() - 86400000);
-    const prevStart = new Date(prevEnd.getTime() - (range - 1) * 86400000);
-    return { current: summarize(transactions, start, now, items), previous: summarize(transactions, prevStart, prevEnd, items) };
+    if (range === "all") {
+      const first = coveredFrom ?? transactions.at(-1)?.created ?? now.toISOString();
+      return { since: first, current: summarize(transactions, new Date(first), now, items), previous: null };
+    }
+    const start = new Date(now.getTime() - (range - 1) * DAY);
+    const prevEnd = new Date(start.getTime() - DAY);
+    const prevStart = new Date(prevEnd.getTime() - (range - 1) * DAY);
+    return { since: start.toISOString(), current: summarize(transactions, start, now, items), previous: summarize(transactions, prevStart, prevEnd, items) };
   };
 
-  const loadSales = async (range: RangeDays, forCreator: Creator | null = creator) => {
+  const loadSales = async (range: ReportRange, forCreator: Creator | null = creator) => {
     if (!forCreator) return;
     salesWanted.current = true;
     if (!forCreator.access.earnings) {
@@ -190,27 +213,78 @@ export function useWorkspaceState() {
       return;
     }
     salesAbort.current?.abort();
+    salesStopped.current = false;
     const controller = new AbortController();
     salesAbort.current = controller;
     setSales((s) => ({ ...s, range, loading: true, error: null, progress: "Loading sales…" }));
     try {
-      // Twice the range, so we can compare with the previous period.
-      const since = new Date(Date.now() - range * 2 * 86400000);
-      const [{ transactions, truncated }, balance] = await Promise.all([
-        listSales(client, forCreator, since, {
+      const key = creatorKey(forCreator);
+      const now = new Date();
+      // Twice the range, so we can compare with the previous period; null = everything.
+      const want = range === "all" ? null : new Date(now.getTime() - range * 2 * DAY);
+      const cached = await salesCache.read(key);
+      if (controller.signal.aborted) return;
+      if (cached && cacheCovers(cached, want)) {
+        // Already have these sales: show them straight away, refresh quietly if stale.
+        transactionsRef.current = cached.sales;
+        coverageRef.current = cached.coveredFrom;
+        const fresh = now.getTime() - new Date(cached.updatedAt).getTime() < FRESH_MS;
+        setSales((s) => ({
+          ...s,
+          ...resummarize(range, cached.sales, cached.coveredFrom),
+          truncated: false,
+          loading: !fresh,
+          progress: fresh ? null : s.progress,
+          loadedAt: s.loadedAt ?? new Date(cached.updatedAt),
+        }));
+        if (fresh) return;
+      } else {
+        // Not loaded this far back yet: show progress rather than the old range's numbers.
+        setSales((s) => ({ ...s, current: null, previous: null }));
+      }
+      const stopAt = planFetch(cached, want, now);
+      const fullHistory = stopAt === null;
+      const [fetched, balance] = await Promise.all([
+        listSales(client, forCreator, stopAt, {
+          maxPages: fullHistory ? 5000 : 200,
           signal: controller.signal,
           onProgress: (p) =>
-            setSales((s) => ({ ...s, progress: `Loading sales… ${p.sales.toLocaleString()} so far${p.oldest ? `, back to ${new Date(p.oldest).toLocaleDateString()}` : ""}` })),
+            setSales((s) => ({
+              ...s,
+              progress:
+                (fullHistory ? "Loading your full sales history… " : "Loading sales… ") +
+                `${p.sales.toLocaleString()} so far` +
+                (p.oldest ? `, back to ${new Date(p.oldest).toLocaleDateString()}` : "") +
+                (fullHistory ? ". Only the first load takes this long." : ""),
+            })),
         }),
         getBalance(client, forCreator),
       ]);
-      if (controller.signal.aborted) return;
-      transactionsRef.current = transactions;
-      setSales((s) => ({ ...s, ...resummarize(range, transactions), balance, truncated, loading: false, progress: null, loadedAt: new Date() }));
+      if (controller.signal.aborted && !salesStopped.current) return;
+      const merged = mergeFetched(cached, fetched, stopAt, now);
+      await salesCache.write(key, merged);
+      transactionsRef.current = merged.sales;
+      coverageRef.current = merged.coveredFrom;
+      const incomplete = merged.coveredFrom !== null && (want === null || new Date(merged.coveredFrom) > want);
+      setSales((s) => ({
+        ...s,
+        ...resummarize(range, merged.sales, merged.coveredFrom),
+        balance,
+        truncated: incomplete,
+        loading: false,
+        progress: null,
+        loadedAt: new Date(),
+      }));
     } catch (e) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted && !salesStopped.current) return;
       setSales((s) => ({ ...s, loading: false, progress: null, error: `Couldn't load sales: ${(e as Error).message}` }));
     }
+  };
+
+  /** Stops a long sales load and shows what was loaded so far. */
+  const stopSales = () => {
+    salesStopped.current = true;
+    salesAbort.current?.abort();
   };
 
   // Keep categories/names in the report in step with the loaded items.
@@ -253,6 +327,7 @@ export function useWorkspaceState() {
     reloadExperience: () => loadExperience(universeId),
     sales,
     loadSales,
+    stopSales,
     earningsPerSale,
     ensureSplits,
   };

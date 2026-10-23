@@ -9,7 +9,7 @@ import { saveChange } from "../core/save";
 import { robux } from "./charts";
 import { Menu, Segmented, downloadText, fileSafe } from "./components";
 import { ImportResultDialog, ItemStatsDialog, LuaDialog, PriceRuleDialog, ScheduleDialog, TextDialog } from "./ItemDialogs";
-import { creatorKey, useWorkspace } from "./workspace";
+import { creatorKey, rangeLabel, useWorkspace } from "./workspace";
 
 type SaleFilter = "all" | "onSale" | "offSale";
 type SortKey = "default" | "name" | "priceHigh" | "priceLow" | "sales" | "earned";
@@ -286,7 +286,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
             <>
               <span>See how many of each item sold and what it earned.</span>
               <button class="rb-link-btn" onClick={() => ws.loadSales(sales.range)}>
-                Load sales for the last {sales.range} days
+                {sales.range === "all" ? "Load all-time sales" : `Load sales for the ${rangeLabel(sales.range)}`}
               </button>
             </>
           )}

@@ -1,9 +1,9 @@
 import { useEffect } from "preact/hooks";
 import type { CategoryId } from "../core/categories";
-import { change, type EarningsSummary } from "../core/earnings";
+import { byMonth, change, type DayPoint, type EarningsSummary } from "../core/earnings";
 import { AreaChart, BarChart, ChartCard, DoughnutChart, StatTile, compact, robux, type Slice } from "./charts";
 import { Segmented, downloadText, fileSafe } from "./components";
-import { useWorkspace, type RangeDays } from "./workspace";
+import { rangeLabel, useWorkspace, type ReportRange } from "./workspace";
 
 // Each category keeps the same color everywhere, whatever its rank.
 const CATEGORY_SLOT: Record<CategoryId | "otherFold", number> = {
@@ -19,16 +19,21 @@ const CATEGORY_SLOT: Record<CategoryId | "otherFold", number> = {
   otherFold: -1,
 };
 
-const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+/** Past this many days, charts show months instead of days. */
+const MONTHLY_AFTER_DAYS = 120;
 
-function reportCsv(s: EarningsSummary): string {
-  const lines = ["date,robux,sales", ...s.daily.map((d) => `${d.date},${d.robux},${d.sales}`), "", "item,robux,sales"];
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const shortMonth = (yyyyMm: string) => new Date(`${yyyyMm}-01T00:00:00`).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+const longDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+
+function reportCsv(points: DayPoint[], monthly: boolean, s: EarningsSummary): string {
+  const lines = [`${monthly ? "month" : "date"},robux,sales`, ...points.map((d) => `${d.date},${d.robux},${d.sales}`), "", "item,robux,sales"];
   for (const i of s.topItems) lines.push(`"${i.label.replace(/"/g, '""')}",${i.robux},${i.sales}`);
   return lines.join("\r\n") + "\r\n";
 }
 
 export function EarningsTab() {
-  const { creator, sales, loadSales } = useWorkspace();
+  const { creator, sales, loadSales, stopSales } = useWorkspace();
 
   // Load on open; the workspace reloads it after a creator switch.
   useEffect(() => {
@@ -37,41 +42,75 @@ export function EarningsTab() {
 
   const s = sales.current;
   const p = sales.previous;
+  const allTime = sales.range === "all";
+  const monthly = !!s && s.daily.length > MONTHLY_AFTER_DAYS;
+  const points = s ? (monthly ? byMonth(s.daily) : s.daily) : [];
+  const label = (d: DayPoint) => (monthly ? shortMonth(d.date) : shortDate(d.date));
+  const unit = monthly ? "month" : "day";
 
   return (
     <>
       <div class="rb-toolbar">
-        <Segmented<`${RangeDays}`>
+        <Segmented<string>
           label="Date range"
-          value={`${sales.range}` as `${RangeDays}`}
-          onChange={(v) => loadSales(Number(v) as RangeDays)}
+          value={String(sales.range)}
+          onChange={(v) => loadSales(v === "all" ? "all" : (Number(v) as ReportRange))}
           options={[
             ["7", "Last 7 days"],
             ["30", "Last 30 days"],
             ["90", "Last 90 days"],
+            ["all", "All time"],
           ]}
         />
         <div class="rb-spacer" />
-        {sales.loadedAt && <span class="rb-muted rb-small">Updated {sales.loadedAt.toLocaleTimeString()}</span>}
-        <button class="rb-btn rb-btn-ghost" disabled={!s} onClick={() => s && creator && downloadText(`${fileSafe(creator.name)}-earnings-${sales.range}d.csv`, reportCsv(s), "text/csv")}>
-          Export report (.csv)
-        </button>
-        <button class="rb-btn rb-btn-ghost" disabled={sales.loading} onClick={() => loadSales(sales.range)}>
-          Refresh
-        </button>
+        {sales.loading && s ? (
+          <span class="rb-muted rb-small rb-updating">
+            <span class="rb-spinner" /> Updating…
+          </span>
+        ) : (
+          sales.loadedAt && <span class="rb-muted rb-small">Updated {sales.loadedAt.toLocaleTimeString()}</span>
+        )}
+        {sales.loading ? (
+          <button class="rb-btn rb-btn-ghost" onClick={stopSales} title="Stop loading and show what's loaded so far">
+            Stop
+          </button>
+        ) : (
+          <>
+            <button
+              class="rb-btn rb-btn-ghost"
+              disabled={!s}
+              onClick={() => s && creator && downloadText(`${fileSafe(creator.name)}-earnings-${allTime ? "all-time" : `${sales.range}d`}.csv`, reportCsv(points, monthly, s), "text/csv")}
+            >
+              Export report (.csv)
+            </button>
+            <button class="rb-btn rb-btn-ghost" onClick={() => loadSales(sales.range)}>
+              Refresh
+            </button>
+          </>
+        )}
       </div>
 
-      <main class={`rb-body rb-report ${sales.loading && s ? "is-refreshing" : ""}`}>
+      <main class="rb-body rb-report">
         {sales.error && <div class="rb-empty rb-error">{sales.error}</div>}
         {!s && sales.loading && <div class="rb-empty">{sales.progress}</div>}
-        {sales.truncated && (
-          <div class="rb-banner rb-banner-inline">This store has a lot of sales, so the report covers the most recent 6,000 transactions. Older days in the range may be incomplete.</div>
+        {sales.truncated && !sales.loading && sales.since && (
+          <div class="rb-banner rb-banner-inline">
+            Showing sales from {longDate(sales.since)} on; loading stopped before {allTime ? "your first sale" : "the start of this range"}.{" "}
+            <button class="rb-link-btn" onClick={() => loadSales(sales.range)}>
+              Keep loading
+            </button>
+          </div>
         )}
 
         {s && (
           <>
             <div class="rb-kpis">
-              <StatTile label={`Earned, last ${sales.range} days`} value={robux(s.totalRobux)} delta={p ? change(s.totalRobux, p.totalRobux) : undefined} />
+              <StatTile
+                label={`Earned, ${rangeLabel(sales.range)}`}
+                value={robux(s.totalRobux)}
+                delta={p ? change(s.totalRobux, p.totalRobux) : undefined}
+                hint={allTime && sales.since ? `Since ${longDate(sales.since)}` : undefined}
+              />
               <StatTile label="Sales" value={s.sales.toLocaleString()} delta={p ? change(s.sales, p.sales) : undefined} />
               <StatTile label="Average per sale" value={robux(s.averagePerSale)} />
               <StatTile label="Unique buyers" value={s.uniqueBuyers.toLocaleString()} />
@@ -85,11 +124,11 @@ export function EarningsTab() {
               <div class="rb-grid">
                 <ChartCard
                   wide
-                  title="Daily earnings"
-                  subtitle="Robux credited per day, after Roblox's share"
-                  table={{ columns: ["Date", "Earned", "Sales"], rows: s.daily.map((d) => [d.date, robux(d.robux), d.sales]) }}
+                  title={monthly ? "Monthly earnings" : "Daily earnings"}
+                  subtitle={`Robux credited per ${unit}, after Roblox's share`}
+                  table={{ columns: [monthly ? "Month" : "Date", "Earned", "Sales"], rows: points.map((d) => [d.date, robux(d.robux), d.sales]) }}
                 >
-                  <AreaChart labels={s.daily.map((d) => shortDate(d.date))} values={s.daily.map((d) => d.robux)} />
+                  <AreaChart labels={points.map(label)} values={points.map((d) => d.robux)} />
                 </ChartCard>
 
                 <ChartCard
@@ -111,11 +150,11 @@ export function EarningsTab() {
                 </ChartCard>
 
                 <ChartCard
-                  title="Sales per day"
+                  title={`Sales per ${unit}`}
                   subtitle="Number of purchases"
-                  table={{ columns: ["Date", "Sales"], rows: s.daily.map((d) => [d.date, d.sales]) }}
+                  table={{ columns: [monthly ? "Month" : "Date", "Sales"], rows: points.map((d) => [d.date, d.sales]) }}
                 >
-                  <BarChart labels={s.daily.map((d) => shortDate(d.date))} values={s.daily.map((d) => d.sales)} format={(n) => `${compact(n)} sales`} />
+                  <BarChart labels={points.map(label)} values={points.map((d) => d.sales)} format={(n) => `${compact(n)} sales`} />
                 </ChartCard>
 
                 <section class="rb-card">

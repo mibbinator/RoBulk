@@ -44,13 +44,13 @@ const SCREENSHOTS = [
   },
   {
     file: "4-create.png",
-    q: "tab=create&demo=template",
+    q: "tab=create&demo=template&universeId=6401319371",
     title: "Game passes and developer products from templates",
     sub: "Donation tiers, currency packs or a numbered series in one batch, then copy them to your other games.",
   },
   {
     file: "5-badges.png",
-    q: "tab=badges",
+    q: "tab=badges&universeId=6401319371",
     title: "Manage badges without all the clicking",
     sub: "Enable, disable and rename badges in bulk, and see which ones players actually earn.",
   },

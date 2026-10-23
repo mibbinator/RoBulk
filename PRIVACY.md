@@ -11,12 +11,16 @@ When you open RoBulk on create.roblox.com it reads, from Roblox and only for the
 - your user id and name, and the groups you belong to along with your role's permissions
 - the avatar items, experiences, game passes, developer products and badges you can manage
 - sale transactions and Robux balance, if you have permission to see them
+- which group you last selected in the Creator Dashboard (read from the page itself), so RoBulk can open on the same one
 
 It sends changes to Roblox only when you click a save, create or copy button.
 
 ## What RoBulk stores
 
-- Snapshots of item names, prices and sale status, and a log of changes you saved, kept in your browser's extension storage (`chrome.storage.local`) so you can undo changes later. You can delete snapshots and clear the log from the History tab, and uninstalling the extension removes them.
+Everything below is kept only in your browser's extension storage (`chrome.storage.local`). Uninstalling the extension removes all of it.
+
+- **Snapshots and change log:** item names, prices and sale status, and a log of changes you saved, so you can undo changes later. You can delete snapshots and clear the log from the History tab.
+- **Sales history:** the sale transactions RoBulk has loaded for the earnings report (date, amount, item, and the buyer's Roblox username and id, as Roblox provides them), so later reports only need to fetch new sales.
 
 ## What RoBulk does not do
 

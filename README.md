@@ -24,7 +24,7 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 
 **Earnings report**
 - Earned, sales, average per sale, unique buyers, pending Robux and current balance, compared with the previous period
-- Daily earnings, earnings by category, top items, sales per day and top buyers, for the last 7, 30 or 90 days
+- Daily earnings, earnings by category, top items, sales per day and top buyers, for the last 7, 30 or 90 days or all time
 - Per-item sales and earnings from the Items tab
 - Every chart has a table view, and the report exports to .csv
 
@@ -46,8 +46,8 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
 2. Click the blue **Bulk Edit** button in the bottom-right corner. If you don't see it, refresh the page.
 3. Use the two menus at the top right:
-   - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. When the dashboard address includes a group (`?groupId=…`), RoBulk starts on that group.
-   - **Experience:** which game's passes, developer products and badges to show. Your avatar items show no matter which experience is picked.
+   - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. RoBulk opens on whichever group you have selected in the Creator Dashboard (or on you, if you're viewing your own creations).
+   - **Experience:** starts on *No experience selected*. Pick a game to also show its passes and developer products, and to use the Create & copy and Badges tabs. Your avatar items show either way.
 
 Press **Esc** or click **✕** to close. If you have unsaved changes, RoBulk asks first.
 
@@ -103,12 +103,14 @@ All of these are in the **More** menu at the bottom of the Items tab and apply t
 
 ![Earnings report](store/screenshots/2-earnings.png)
 
-Open the **Earnings report** tab. It loads your sales for the period you choose (**Last 7 / 30 / 90 days**) and shows:
+Open the **Earnings report** tab. It loads your sales for the period you choose (**Last 7 / 30 / 90 days** or **All time**) and shows:
 
 - earned, number of sales, average per sale, unique buyers, pending Robux and your current balance, with the change from the previous period
 - daily earnings, earnings by category, your top items, sales per day and your top buyers
 
 Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
+
+**All time** adds up every sale since your first one, with monthly charts. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones, so switching between ranges is instant.
 
 For a single item, click **View sales** under its name in the Items tab (once sales are loaded it reads *12 sold · R$84*). The Items tab's **Sort** menu then also offers *Best sellers* and *Most earned*.
 
@@ -170,7 +172,7 @@ Open the **Badges** tab with an experience selected. The chart shows your most-a
 - **"Limited items aren't supported yet."** Limiteds have extra settings (stock, resale) that RoBulk doesn't touch, so they're skipped. Edit them on the dashboard.
 - **An item never put on sale is missing.** RoBulk lists avatar items from Roblox's catalog, which can leave out items that were never released.
 - **Prices look out of date right after a save.** Roblox's catalog takes a little while to catch up. RoBulk shows your saved values right away; a later Refresh may briefly show the old ones.
-- **Busy stores:** the earnings report reads up to your latest 6,000 sales per load, and says so if the period goes further back than that.
+- **All time is slow the first time.** Roblox only hands out sales history a page at a time, newest first, so a store with years of sales takes a few minutes to load once. Later loads only fetch what's new.
 
 ## Development
 
@@ -192,7 +194,7 @@ Roblox has no bulk endpoint, so RoBulk sends one request per item through your e
 - **Avatar items** are listed with the public catalog search. Before saving, RoBulk reads the item's full sale settings (`GET itemconfiguration.roblox.com/v1/items`) and sends them back unchanged apart from what you edited (`PATCH /v1/collectibles/{collectibleItemId}`), because that endpoint replaces every setting at once. Renames use `/v1/collectibles/update-item-display-information`. Limited items are skipped.
 - **Game passes and developer products** use Roblox's documented [game pass](https://create.roblox.com/docs/cloud/reference/features/game-passes) and [developer product](https://create.roblox.com/docs/cloud/reference/features/developer-products) endpoints, sending only the fields that changed.
 - **Badges** use `PATCH badges.roblox.com/v1/badges/{id}`.
-- **Earnings** come from your sale transactions (`economy.roblox.com/v2/{users|groups}/{id}/transactions`). Very busy stores are capped at the latest 6,000 sales per load.
+- **Earnings** come from your sale transactions (`economy.roblox.com/v2/{users|groups}/{id}/transactions`), cached in `chrome.storage.local`. Each load re-reads only the last 35 days (sales stay pending for up to 30) plus anything older that isn't cached yet.
 
 ## Privacy
 

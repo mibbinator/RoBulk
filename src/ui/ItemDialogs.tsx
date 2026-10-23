@@ -7,7 +7,7 @@ import { applyPriceRule, type PriceOperation, type Rounding } from "../core/pric
 import { DESCRIPTION_LIMIT, NAME_LIMIT, applyTextOperation, type TextOperation } from "../core/textRules";
 import { BarChart, StatTile, robux } from "./charts";
 import { Dialog, Field, Segmented, copyText, downloadText, fileSafe } from "./components";
-import { useWorkspace } from "./workspace";
+import { rangeLabel, useWorkspace } from "./workspace";
 
 type Patches = { item: SellableItem; patch: Edit }[];
 
@@ -382,7 +382,7 @@ export function ItemStatsDialog({ item, onClose }: { item: SellableItem; onClose
       {sales.current && (
         <>
           <div class="rb-stats-row">
-            <StatTile label={`Earned, last ${sales.range} days`} value={robux(stats?.robux ?? 0)} delta={prev ? (prev.robux ? ((stats?.robux ?? 0) - prev.robux) / prev.robux : null) : undefined} />
+            <StatTile label={`Earned, ${rangeLabel(sales.range)}`} value={robux(stats?.robux ?? 0)} delta={prev ? (prev.robux ? ((stats?.robux ?? 0) - prev.robux) / prev.robux : null) : undefined} />
             <StatTile label="Sales" value={(stats?.sales ?? 0).toLocaleString()} />
           </div>
           <h3 class="rb-subhead">Daily earnings</h3>

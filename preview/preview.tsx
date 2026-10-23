@@ -10,6 +10,7 @@ import { fakeFetch } from "./fakeRoblox";
 //   ?tab=earnings|create|badges|history  ?theme=light
 //   ?embed=1     panel only, transparent background (for store screenshots)
 //   ?demo=name   click through to a state, see demos.ts
+//   ?universeId= preselect an experience
 
 window.fetch = fakeFetch as typeof fetch;
 
@@ -28,7 +29,10 @@ document.head.appendChild(style);
 const root = document.getElementById("app")!;
 root.className = "rb-root";
 root.dataset.theme = params.get("theme") === "light" ? "light" : "dark";
-render(<Shell onClose={() => {}} initialTab={(params.get("tab") as TabId) ?? "items"} />, root);
+render(
+  <Shell onClose={() => {}} initialTab={(params.get("tab") as TabId) ?? "items"} initialUniverseId={params.has("universeId") ? Number(params.get("universeId")) : null} />,
+  root,
+);
 
 const demo = params.get("demo");
 if (demo) runDemo(demo, root);

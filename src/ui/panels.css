@@ -448,10 +448,15 @@
 /* ---------- Earnings report ---------- */
 .rb-report {
   padding-top: 16px;
-  transition: opacity 0.2s;
 }
-.rb-report.is-refreshing {
-  opacity: 0.55;
+.rb-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rb-updating .rb-spinner {
+  width: 12px;
+  height: 12px;
 }
 .rb-kpis {
   display: grid;

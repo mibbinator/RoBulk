@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SellableItem } from "../api/types";
-import { change, dayRange, summarize, type SaleTransaction } from "./earnings";
+import { byMonth, change, dayRange, summarize, type SaleTransaction } from "./earnings";
 
 const sale = (over: Partial<SaleTransaction> & { day: number; hour?: number }): SaleTransaction => ({
   id: Math.random().toString(36),
@@ -94,5 +94,20 @@ describe("helpers", () => {
     expect(change(150, 100)).toBe(0.5);
     expect(change(0, 0)).toBe(0);
     expect(change(5, 0)).toBeNull();
+  });
+});
+
+describe("byMonth", () => {
+  it("rolls days up into months", () => {
+    expect(
+      byMonth([
+        { date: "2026-09-29", robux: 5, sales: 1 },
+        { date: "2026-09-30", robux: 0, sales: 0 },
+        { date: "2026-10-01", robux: 7, sales: 2 },
+      ]),
+    ).toEqual([
+      { date: "2026-09", robux: 5, sales: 1 },
+      { date: "2026-10", robux: 7, sales: 2 },
+    ]);
   });
 });

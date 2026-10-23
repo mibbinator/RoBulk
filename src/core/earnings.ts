@@ -164,3 +164,17 @@ export function change(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
   return (current - previous) / previous;
 }
+
+/** Rolls daily points up into calendar months (date becomes YYYY-MM), for long ranges. */
+export function byMonth(daily: DayPoint[]): DayPoint[] {
+  const months: DayPoint[] = [];
+  for (const d of daily) {
+    const month = d.date.slice(0, 7);
+    const last = months.at(-1);
+    if (last?.date === month) {
+      last.robux += d.robux;
+      last.sales += d.sales;
+    } else months.push({ date: month, robux: d.robux, sales: d.sales });
+  }
+  return months;
+}
