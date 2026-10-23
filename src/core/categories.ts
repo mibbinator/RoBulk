@@ -1,7 +1,18 @@
-// Groups Roblox asset types into the categories shown in the panel.
+// Groups items into the categories shown in the panel.
 // Asset type ids: https://create.roblox.com/docs/reference/engine/enums/AssetType
 
-export type CategoryId = "shirts" | "pants" | "tshirts" | "layered" | "accessories" | "heads" | "other";
+import type { SellableItem } from "../api/types";
+
+export type CategoryId =
+  | "shirts"
+  | "pants"
+  | "tshirts"
+  | "layered"
+  | "accessories"
+  | "heads"
+  | "other"
+  | "gamePasses"
+  | "devProducts";
 
 export interface Category {
   id: CategoryId;
@@ -15,7 +26,9 @@ export const CATEGORIES: readonly Category[] = [
   { id: "layered", label: "Layered Clothing" },
   { id: "accessories", label: "Accessories" },
   { id: "heads", label: "Heads & Faces" },
-  { id: "other", label: "Other" },
+  { id: "other", label: "Other Avatar Items" },
+  { id: "gamePasses", label: "Game Passes" },
+  { id: "devProducts", label: "Developer Products" },
 ];
 
 const ASSET_TYPE_TO_CATEGORY: Record<number, CategoryId> = {
@@ -51,4 +64,10 @@ const ASSET_TYPE_TO_CATEGORY: Record<number, CategoryId> = {
 
 export function categoryForAssetType(assetType: number): CategoryId {
   return ASSET_TYPE_TO_CATEGORY[assetType] ?? "other";
+}
+
+export function categoryFor(item: SellableItem): CategoryId {
+  if (item.kind === "gamePass") return "gamePasses";
+  if (item.kind === "devProduct") return "devProducts";
+  return categoryForAssetType(item.assetType ?? 0);
 }

@@ -1,5 +1,5 @@
 import type { RobloxClient } from "./http";
-import type { AvatarItem, Creator } from "./types";
+import { itemKey, type Creator, type SellableItem } from "./types";
 
 // Public catalog search. With IncludeNotForSale it lists a creator's off-sale
 // items too, and each result carries the collectibleItemId needed for saving.
@@ -12,6 +12,7 @@ export interface CatalogSearchItem {
   itemType: string;
   assetType?: number;
   name: string;
+  description?: string | null;
   price?: number | null;
   lowestPrice?: number | null;
   priceStatus?: string;
@@ -24,21 +25,24 @@ interface CatalogSearchPage {
   nextPageCursor: string | null;
 }
 
-export function toAvatarItem(raw: CatalogSearchItem): AvatarItem | null {
+export function toAvatarItem(raw: CatalogSearchItem): SellableItem | null {
   if (raw.itemType !== "Asset" || raw.assetType == null) return null;
   const offSale = raw.isOffSale === true || raw.priceStatus === "Off Sale";
   return {
-    assetId: raw.id,
+    key: itemKey("avatar", raw.id),
+    kind: "avatar",
+    id: raw.id,
     assetType: raw.assetType,
     name: raw.name,
+    description: raw.description ?? "",
     collectibleItemId: raw.collectibleItemId ?? null,
     price: raw.price ?? raw.lowestPrice ?? null,
     onSale: !offSale,
   };
 }
 
-export async function listCreatorItems(client: RobloxClient, creator: Creator): Promise<AvatarItem[]> {
-  const items: AvatarItem[] = [];
+export async function listAvatarItems(client: RobloxClient, creator: Creator): Promise<SellableItem[]> {
+  const items: SellableItem[] = [];
   let cursor = "";
   for (let page = 0; page < MAX_PAGES; page++) {
     const params = new URLSearchParams({

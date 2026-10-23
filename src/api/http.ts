@@ -23,7 +23,14 @@ export interface RobloxClient {
   json<T>(url: string, init?: RequestInit): Promise<T>;
 }
 
-export function createClient(fetchImpl: FetchLike = (i, o) => fetch(i, o)): RobloxClient {
+// Firefox runs content-script fetch() as the extension; content.fetch() makes
+// the request as the page itself, which is what Chrome's fetch() already does.
+const pageFetch: FetchLike = (i, o) => {
+  const firefoxPage = (globalThis as { content?: { fetch?: typeof fetch } }).content?.fetch;
+  return firefoxPage ? firefoxPage(i, o) : fetch(i, o);
+};
+
+export function createClient(fetchImpl: FetchLike = pageFetch): RobloxClient {
   let csrfToken = "";
 
   const send = (url: string, init: RequestInit) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { Panel } from "./Panel";
+import { Shell } from "./Shell";
 import { detectTheme, type Theme } from "./theme";
 
 // The dashboard is a single-page app, so watch for route changes and only
@@ -29,7 +29,7 @@ export function App() {
           Bulk Edit
         </button>
       )}
-      {open && <Panel onClose={() => setOpen(false)} />}
+      {open && <Shell onClose={() => setOpen(false)} />}
     </div>
   );
 }

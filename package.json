@@ -1,15 +1,18 @@
 {
   "name": "robulk",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Bulk sale and pricing tools for the Roblox Creator Dashboard.",
+  "description": "Bulk pricing, sales and earnings tools for Roblox creators.",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "tsc --noEmit && vite build",
+    "package": "npm run build && node scripts/package.mjs",
+    "icons": "node scripts/make-icons.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "preview": "vite build --config vite.preview.config.ts"
   },
   "repository": {
     "type": "git",
@@ -17,11 +20,14 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
+    "chart.js": "^4.6.1",
     "preact": "^11.0.2"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "@types/chrome": "^0.3.6",
+    "fflate": "^0.8.3",
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

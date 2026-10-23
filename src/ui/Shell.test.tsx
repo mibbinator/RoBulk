@@ -1,0 +1,178 @@
+// @vitest-environment happy-dom
+import { render } from "preact";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Shell } from "./Shell";
+
+// End-to-end checks of the panel against simulated Roblox responses.
+
+type Call = { url: string; method: string; body: unknown };
+
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
+
+const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+
+function fakeRoblox() {
+  const calls: Call[] = [];
+  let csrfIssued = false;
+
+  const shirtConfig = {
+    isCollectible: true,
+    collectibleItemType: 2,
+    saleStatus: 1,
+    saleLocation: { saleLocationType: 1, universeIds: [] },
+    collectibleDetails: { collectibleItemId: "uuid-shirt", quantityLimitPerUser: 0, isResellable: false },
+    dynamicPriceConfiguration: { PriceOffset: 0, IsOptOutRegionalPricing: true },
+  };
+
+  const sale = (created: string, robux: number, item: { id: number; name: string; type: string }, buyer = { id: 50, type: "User", name: "buyer1" }) => ({
+    idHash: `${created}-${item.id}-${robux}`,
+    created,
+    isPending: false,
+    agent: buyer,
+    details: item,
+    currency: { amount: robux, type: "Robux" },
+  });
+
+  const fetchImpl = vi.fn(async (input: string, init: RequestInit = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    const body = init.body instanceof FormData ? Object.fromEntries(init.body.entries()) : init.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ url, method, body });
+
+    if (method !== "GET" && !csrfIssued) {
+      csrfIssued = true;
+      return json({ errors: [{ message: "XSRF token invalid" }] }, 403, { "x-csrf-token": "tok" });
+    }
+    if (url.includes("users.roblox.com/v1/users/authenticated")) return json({ id: 1, name: "me", displayName: "Me" });
+    if (url.includes("groups.roblox.com")) return json({ data: [] });
+    if (url.includes("catalog.roblox.com/v2/search")) {
+      return json({
+        nextPageCursor: null,
+        data: [
+          { id: 101, itemType: "Asset", assetType: 11, name: "Off-sale shirt", price: 5, priceStatus: "Off Sale", collectibleItemId: "uuid-shirt" },
+          { id: 102, itemType: "Asset", assetType: 11, name: "On-sale shirt", price: 5, collectibleItemId: "uuid-2" },
+        ],
+      });
+    }
+    if (url.includes("revenue-split")) return json({ RevenueSplit: { creatorSplitPercentage: 70 } });
+    if (url.includes("develop.roblox.com/v1/user/universes")) return json({ data: [{ id: 42, name: "My Game" }], nextPageCursor: null });
+    if (url.includes("/game-passes/creator")) {
+      return json({
+        gamePasses: [{ gamePassId: 7, name: "VIP", isForSale: false, priceInformation: { defaultPriceInRobux: 100, enabledFeatures: [] }, isManagedPricingEnabled: false }],
+        nextPageToken: "",
+      });
+    }
+    if (url.includes("/developer-products/creator")) return json({ developerProducts: [], nextPageToken: "" });
+    if (url.includes("thumbnails.roblox.com")) return json({ data: [] });
+    if (url.includes("itemconfiguration.roblox.com/v1/items?")) return json({ item: shirtConfig });
+    if (url.includes("economy.roblox.com/v2/users/1/transactions")) {
+      return json({
+        nextPageCursor: null,
+        data: [
+          sale(daysAgo(1), 70, { id: 7, name: "VIP", type: "GamePass" }),
+          sale(daysAgo(2), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
+          sale(daysAgo(3), 4, { id: 102, name: "On-sale shirt", type: "Asset" }, { id: 51, type: "User", name: "buyer2" }),
+          sale(daysAgo(40), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
+          sale(daysAgo(70), 4, { id: 102, name: "On-sale shirt", type: "Asset" }),
+        ],
+      });
+    }
+    if (url.includes("economy.roblox.com/v1/users/1/currency")) return json({ robux: 1234 });
+    if (method === "PATCH") return new Response(null, { status: url.includes("collectibles") ? 200 : 204 });
+    return json({ errors: [{ message: `unexpected ${method} ${url}` }] }, 404);
+  });
+
+  return { fetchImpl, calls };
+}
+
+async function waitFor<T>(fn: () => T | null | undefined | false, timeout = 8000): Promise<T> {
+  const start = Date.now();
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() - start > timeout) throw new Error("waitFor timed out");
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+const byText = (root: ParentNode, selector: string, text: string | RegExp) =>
+  [...root.querySelectorAll<HTMLElement>(selector)].find((el) => (typeof text === "string" ? el.textContent?.trim() === text : text.test(el.textContent ?? "")));
+
+function mount() {
+  const { fetchImpl, calls } = fakeRoblox();
+  vi.stubGlobal("fetch", fetchImpl);
+  vi.spyOn(console, "error").mockImplementation(() => {}); // Chart.js can't draw without a real canvas.
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  render(<Shell onClose={() => {}} />, root);
+  return { root, calls };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  document.body.innerHTML = "";
+});
+
+describe("Shell", () => {
+  it("bulk puts off-sale items on sale, preserving hidden settings, and logs it", async () => {
+    const { root, calls } = mount();
+
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+    await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
+    // Per-sale earnings use the revenue split (70% of R$5 = R$3).
+    await waitFor(() => byText(root, ".rb-was", "you get R$3"));
+
+    byText(root, ".rb-segmented button", "Off sale")!.click();
+    await waitFor(() => !byText(root, ".rb-name a", "On-sale shirt"));
+    byText(root, ".rb-toolbar button", "Select all")!.click();
+    await waitFor(() => byText(root, ".rb-selection", "2 selected"));
+    byText(root, ".rb-actions button", "Put on sale")!.click();
+
+    (await waitFor(() => byText(root, ".rb-btn-primary", "Save 2 changes"))).click();
+    await waitFor(() => byText(root, ".rb-progress span", /^Saved 2 of 2\./));
+
+    const collectiblePatch = calls.find((c) => c.method === "PATCH" && c.url.endsWith("/v1/collectibles/uuid-shirt") && c.body)!;
+    expect(collectiblePatch.body).toEqual({
+      saleLocationConfiguration: { saleLocationType: 1, places: [] },
+      saleStatus: 0,
+      quantityLimitPerUser: 0,
+      resaleRestriction: 2,
+      priceInRobux: 5,
+      priceOffset: 0,
+      isFree: false,
+      optOutFromRegionalPricing: true, // read from the item, not reset
+    });
+    const passPatches = calls.filter((c) => c.method === "PATCH" && c.url.includes("/game-passes/7"));
+    expect(passPatches.at(-1)!.url).toBe("https://apis.roblox.com/game-passes/v1/universes/42/game-passes/7");
+    expect(passPatches.at(-1)!.body).toEqual({ isForSale: "true" });
+    expect(calls.some((c) => c.method === "PATCH" && c.url.includes("uuid-2"))).toBe(false);
+
+    // The save shows up in History, with a "before" snapshot to undo it.
+    byText(root, ".rb-tabs button", "History")!.click();
+    await waitFor(() => byText(root, "td", "Before a save"));
+    byText(root, ".rb-segmented button", "Activity log")!.click();
+    await waitFor(() => byText(root, "td", "Off-sale shirt"));
+    expect(byText(root, "td", "VIP")).toBeTruthy();
+  }, 20000);
+
+  it("builds the earnings report from sale transactions", async () => {
+    const { root } = mount();
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+
+    byText(root, ".rb-tabs button", "Earnings report")!.click();
+
+    const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$78");
+    // Previous 30 days had one R$4 sale.
+    expect(earned.querySelector(".rb-stat-delta")!.textContent).toMatch(/▲ 1850% vs previous period/);
+    expect(byText(root, ".rb-stat", /^Sales/)!.querySelector(".rb-stat-value")!.textContent).toBe("3");
+    expect(byText(root, ".rb-stat", /Current balance/)!.querySelector(".rb-stat-value")!.textContent).toBe("R$1,234");
+
+    // Category legend carries labels and values (not color alone).
+    expect(byText(root, ".rb-legend li", /Game Passes\s*R\$70/)).toBeTruthy();
+    expect(byText(root, ".rb-legend li", /Classic Shirts\s*R\$8/)).toBeTruthy();
+    expect(byText(root, "td a", "buyer1")).toBeTruthy();
+  }, 20000);
+});

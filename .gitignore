@@ -10,3 +10,6 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+release/
+dist-firefox/
+dist-preview/

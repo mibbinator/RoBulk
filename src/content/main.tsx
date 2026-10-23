@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { App } from "../ui/App";
-import css from "../ui/styles.css?inline";
+import panelsCss from "../ui/panels.css?inline";
+import baseCss from "../ui/styles.css?inline";
 
 // Mount RoBulk inside a shadow root so the Creator Dashboard's styles and
 // ours can't affect each other.
@@ -12,7 +13,7 @@ function mount() {
 
   const shadow = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
-  style.textContent = css;
+  style.textContent = baseCss + panelsCss;
   shadow.appendChild(style);
 
   const root = document.createElement("div");
