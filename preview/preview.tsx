@@ -12,6 +12,7 @@ import { fakeFetch } from "./fakeRoblox";
 //   ?demo=name   click through to a state, see demos.ts
 //   ?universeId= preselect an experience
 //   ?unpublished show the unpublished clothing warning
+//   ?slowSales   load sales slowly, a page at a time
 
 window.fetch = fakeFetch as typeof fetch;
 

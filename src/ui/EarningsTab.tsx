@@ -91,6 +91,16 @@ export function EarningsTab() {
       <main class="rb-body rb-report">
         {sales.error && <div class="rb-empty rb-error">{sales.error}</div>}
         {!s && sales.loading && <div class="rb-empty">{sales.progress}</div>}
+        {s && sales.partial && (
+          <div class="rb-banner rb-banner-inline rb-filling" role="status">
+            <div class={`rb-progress-bar ${sales.fraction == null ? "is-indeterminate" : ""}`}>
+              <div style={{ width: sales.fraction == null ? undefined : `${Math.round(sales.fraction * 100)}%` }} />
+            </div>
+            <span>
+              {sales.progress} The report fills in as they arrive, and everything loaded is saved, so you can leave and come back.
+            </span>
+          </div>
+        )}
         {sales.truncated && !sales.loading && sales.since && (
           <div class="rb-banner rb-banner-inline">
             Showing sales from {longDate(sales.since)} on; loading stopped before {allTime ? "your first sale" : "the start of this range"}.{" "}

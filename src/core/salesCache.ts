@@ -96,8 +96,11 @@ export function mergeFetched(cache: SalesCacheEntry | null, fetched: FetchOutcom
  * `stopAt` (null = everything). The newer end of the cache is unchanged.
  */
 export function mergeOlder(cache: SalesCacheEntry, fetched: FetchOutcome, stopAt: Date | null): SalesCacheEntry {
-  const seen = new Set(cache.sales.map((s) => s.id));
-  // The resumed page can repeat a few sales the cache already has.
+  // The resumed page can repeat a few sales the cache already has. Those can
+  // only be at its older end, so this runs on every page without slowing down.
+  const newestFetched = fetched.transactions[0]?.created;
+  const seen = new Set<string>();
+  for (let i = cache.sales.length - 1; i >= 0 && newestFetched && cache.sales[i].created <= newestFetched; i--) seen.add(cache.sales[i].id);
   const older = fetched.transactions.filter((s) => !seen.has(s.id));
   const coveredFrom = fetched.reachedEnd
     ? null

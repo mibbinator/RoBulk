@@ -147,7 +147,13 @@ export async function fakeFetch(input: RequestInfo | URL, init: RequestInit = {}
     const ids = (query.get(param) ?? "").split(",").filter(Boolean).map(Number);
     return json({ data: ids.map((id) => ({ targetId: id, state: "Completed", imageUrl: thumbFor(param, id) })) });
   }
-  if (url.includes("/transactions")) return json({ data: transactions, nextPageCursor: null });
+  if (url.includes("/transactions")) {
+    // ?slowSales: hand sales out 25 at a time, slowly, to see a long load in progress.
+    if (!new URLSearchParams(location.search).has("slowSales")) return json({ data: transactions, nextPageCursor: null });
+    const from = Number(new URL(url).searchParams.get("cursor") ?? 0);
+    await new Promise((r) => setTimeout(r, 700));
+    return json({ data: transactions.slice(from, from + 25), nextPageCursor: from + 25 < transactions.length ? String(from + 25) : null });
+  }
   if (url.includes("/currency")) return json({ robux: 12_480 });
   if (url.includes("badges.roblox.com")) return json({ data: badges, nextPageCursor: null });
   return json({ errors: [{ message: `No fake for ${url}` }] }, 404);

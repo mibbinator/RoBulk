@@ -739,3 +739,15 @@
 .rb-unpublished a {
   color: inherit;
 }
+
+/* ---------- Report filling in while older sales load ---------- */
+.rb-filling {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  color: var(--rb-muted);
+}
+.rb-filling .rb-progress-bar {
+  flex: 0 0 140px;
+}

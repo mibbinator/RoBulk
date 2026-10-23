@@ -114,7 +114,7 @@ Open the **Earnings report** tab. It loads your sales for the period you choose 
 
 Every chart has **Show table** for the exact numbers, and **Export report (.csv)** saves the daily totals and top items. For groups, you need permission to view the group's revenue.
 
-**All time** adds up every sale since your first one, with weekly charts once your history is longer than 90 days. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store; you can click **Stop** to see what's loaded so far and **Keep loading** later. After that, RoBulk remembers your sales in the browser and only fetches new ones. Picking a longer range, or **Keep loading**, carries on from where the last load stopped instead of starting from your newest sale again.
+**All time** adds up every sale since your first one, with weekly charts once your history is longer than 90 days. The first time, RoBulk has to read your whole sales history from Roblox, which can take a while for a busy store. The report fills in as sales arrive, and every page of sales is saved in your browser the moment it's loaded, so nothing is lost if you click **Stop**, close RoBulk, switch creators or leave the page: next time it carries on from where it got to. Clicking **All time** again while it loads doesn't start over, and closing RoBulk doesn't stop it. After that, RoBulk only fetches new sales.
 
 RoBulk starts loading sales in the background as soon as you open it, so the report is usually ready by the time you click the tab. While it loads, a bar at the bottom of the panel shows progress and has a **Stop** button. You can turn background loading off in the **Options** tab.
 

@@ -97,7 +97,20 @@ export async function listSales(
   client: RobloxClient,
   creator: Creator,
   since: Date | null,
-  { maxPages = 60, fromCursor = "", onProgress, signal }: { maxPages?: number; fromCursor?: string; onProgress?: (p: TransactionProgress) => void; signal?: AbortSignal } = {},
+  {
+    maxPages = 60,
+    fromCursor = "",
+    onProgress,
+    onPage,
+    signal,
+  }: {
+    maxPages?: number;
+    fromCursor?: string;
+    onProgress?: (p: TransactionProgress) => void;
+    /** Everything so far after each page that isn't the last, so it can be saved as it arrives. */
+    onPage?: (soFar: TransactionResult) => void;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<TransactionResult> {
   const base =
     creator.type === "Group"
@@ -134,6 +147,7 @@ export async function listSales(
     if (reachedSince) return { transactions, reachedSince, reachedEnd: false, truncated: false, resumeCursor: resume(cursor) };
     if (!res.nextPageCursor) return { transactions, reachedSince: false, reachedEnd: true, truncated: false, resumeCursor: null };
     cursor = res.nextPageCursor;
+    onPage?.({ transactions: [...transactions], reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) });
     if (pace) await sleep(pace, signal);
   }
   return { transactions, reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) };
