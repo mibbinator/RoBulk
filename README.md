@@ -7,7 +7,6 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 ![RoBulk staging a whole store back on sale](store/screenshots/1-restock.png)
 
 - [What it does](#what-it-does)
-- [Installing](#installing)
 - [How to use](#how-to-use)
 - [Tips and troubleshooting](#tips-and-troubleshooting)
 - [Development](#development)
@@ -39,20 +38,6 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 **History**
 - A snapshot of your prices and sale status is taken automatically once a day and before every save, so you can put everything back the way it was (handy when a lapsed Premium subscription takes a group's clothing off sale)
 - Activity log of everything saved through RoBulk, exportable to .csv
-
-## Installing
-
-The Chrome Web Store and Firefox Add-ons listings are on the way. Until then you can build it yourself (you'll need [Node.js](https://nodejs.org/) 22 or newer):
-
-```sh
-git clone https://github.com/mibbinator/RoBulk.git
-cd RoBulk
-npm install
-npm run package
-```
-
-- **Chrome or Edge:** open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked** and choose the `dist` folder.
-- **Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and pick `dist-firefox/manifest.json`. Firefox removes temporary add-ons when it closes.
 
 ## How to use
 
@@ -179,7 +164,7 @@ Open the **Badges** tab with an experience selected. The chart shows your most-a
 
 ## Tips and troubleshooting
 
-- **The Bulk Edit button isn't there.** Refresh the dashboard tab. If you just installed or updated RoBulk, reload it on the extensions page first.
+- **The Bulk Edit button isn't there.** Refresh the dashboard tab, especially right after installing or updating RoBulk.
 - **A group is missing from the creator menu.** Your role in that group needs permission to manage the group's items or experiences. Ask the group owner.
 - **A row shows a red message after saving.** That's Roblox's own reason, for example a price below the minimum, a missing permission, or a group that lost its owner's Premium. Fix it and save again; only the failed rows are sent.
 - **"Limited items aren't supported yet."** Limiteds have extra settings (stock, resale) that RoBulk doesn't touch, so they're skipped. Edit them on the dashboard.
