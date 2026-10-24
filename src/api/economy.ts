@@ -106,18 +106,30 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", done);
   });
 
-async function getWithRetry<T>(client: RobloxClient, url: string, { onRateLimited, signal }: { onRateLimited?: () => void; signal?: AbortSignal } = {}, attempts = 4): Promise<T> {
+/** How many times one request waits out "too many requests" before giving up (several minutes in all). */
+const RATE_LIMIT_WAITS = 8;
+
+async function getWithRetry<T>(
+  client: RobloxClient,
+  url: string,
+  { onRateLimited, signal }: { onRateLimited?: (waitMs: number) => void; signal?: AbortSignal } = {},
+  attempts = 4,
+): Promise<T> {
+  let waits = 0;
   for (let attempt = 0; ; attempt++) {
     try {
       return await client.json<T>(url);
     } catch (e) {
-      if (attempt >= attempts || signal?.aborted) throw e;
-      // Too many requests: wait as long as Roblox asks, and slow down.
-      if (e instanceof RobloxApiError && e.status === 429) {
-        onRateLimited?.();
-        await sleep(e.retryAfterMs ?? 3000 * 2 ** attempt, signal);
+      if (signal?.aborted) throw e;
+      // Too many requests: wait as long as Roblox asks (or longer each time), and slow down.
+      if (e instanceof RobloxApiError && e.status === 429 && waits < RATE_LIMIT_WAITS) {
+        const wait = e.retryAfterMs ?? Math.min(60_000, 5_000 * 2 ** waits);
+        waits++;
+        onRateLimited?.(wait);
+        await sleep(wait, signal);
         continue;
       }
+      if (attempt >= attempts) throw e;
       // A Roblox server error or a dropped connection is usually gone on the next try.
       const transient = e instanceof RobloxApiError ? e.status >= 500 : e instanceof TypeError;
       if (!transient) throw e;
@@ -129,11 +141,21 @@ async function getWithRetry<T>(client: RobloxClient, url: string, { onRateLimite
 /** First pause between pages after Roblox says "too many requests"; it doubles on each further one. */
 export const RATE_LIMITED_PACE_MS = 350;
 const MAX_PACE_MS = 4000;
+/**
+ * The pause between pages for each service once Roblox has said to slow down.
+ * It lasts for the page visit, so a load that tries again doesn't rush straight
+ * back into the limit.
+ */
+const servicePace: Record<"rec" | "eco", number> = { rec: 0, eco: 0 };
 
 export interface TransactionProgress {
   pages: number;
   sales: number;
   oldest: string | null;
+  /** How far back paging has got, counting sales skipped because they're already loaded. */
+  reached: string | null;
+  /** Paging through sales the records service already gave, to get to older ones. */
+  skipping: boolean;
 }
 
 export interface TransactionResult {
@@ -151,55 +173,108 @@ export interface TransactionResult {
   resumeCursor: string | null;
 }
 
-/** One page of sales from one of Roblox's two transaction services, newest first. */
+/**
+ * One page of sales from one of Roblox's two transaction services, newest
+ * first. `handoff` (with no `next`) means this service has nothing older: carry
+ * on with the economy service, skipping sales from that moment on.
+ */
 interface SalesSource {
   name: "rec" | "eco";
-  page(cursor: string, opts: { onRateLimited: () => void; signal?: AbortSignal }): Promise<{ rows: { created: string; sale: SaleTransaction | null }[]; next: string | null }>;
+  page(
+    cursor: string,
+    opts: { onRateLimited: (waitMs: number) => void; signal?: AbortSignal },
+  ): Promise<{
+    rows: { created: string; sale: SaleTransaction | null }[];
+    next: string | null;
+    handoff?: number;
+    /** When `next` starts a new time range: the newest moment it covers. */
+    nextRangeEnd?: number;
+  }>;
 }
 
-/** The records service the dashboard uses. Its cursors mark a place in the list, so they still work on a later visit. */
+const DAY_MS = 86_400_000;
+/** The records service only has sales from here on (the dashboard won't let you pick an earlier date). */
+export const RECORDS_START = new Date(2024, 3, 1).getTime();
+/** How much of the records service is asked for at a time, like the dashboard's longest preset. */
+const RECORDS_WINDOW = 90 * DAY_MS;
+
+/** A records cursor for the time range ending at `endMs`, starting from its newest sale. */
+export const recordsWindowCursor = (endMs: number, oldestMs?: number | null) =>
+  `rec:W${Math.max(RECORDS_START, endMs - RECORDS_WINDOW)}-${endMs}|${oldestMs != null ? `|O${oldestMs}` : ""}`;
+
+/** Economy rows can be timed a moment before the same sale in the records service; skip a little before. */
+const HANDOFF_SLACK_MS = 5_000;
+
+/**
+ * The records service the dashboard uses. It's asked for 90 days at a time,
+ * newest first, back to when it starts; its cursors are "W<start>-<end>|<page>",
+ * so a load can always carry on by date even if a page cursor stops working.
+ */
 function recordsSource(client: RobloxClient, creator: Creator): SalesSource {
   const base = `${RECORDS}/v2/${creator.type === "Group" ? "groups" : "users"}/${creator.id}/transactions`;
-  let withTimes = false;
+  /** The oldest sale it has given (carried in cursors between loads); older ones come from the economy service. */
+  let oldestSeen: number | null = null;
   return {
     name: "rec",
     async page(cursor, opts) {
-      const params = new URLSearchParams({ limit: "100", ledgerReason: "SaleOfGood" });
-      if (withTimes) {
-        params.set("startTimeMillis", "0");
-        params.set("endTimeMillis", String(Date.now()));
-      }
-      if (cursor) params.set("cursor", cursor);
+      const m = /^W(\d+)-(\d+)\|([^|]*)(?:\|O(\d+))?$/.exec(cursor);
+      const endMs = m ? Number(m[2]) : Date.now();
+      const startMs = m ? Number(m[1]) : Math.max(RECORDS_START, endMs - RECORDS_WINDOW);
+      const inner = m ? m[3] : cursor;
+      if (m?.[4]) oldestSeen = Math.min(oldestSeen ?? Infinity, Number(m[4]));
+      const tail = () => (oldestSeen != null ? `|O${oldestSeen}` : "");
+      const params = new URLSearchParams({ limit: "100", ledgerReason: "SaleOfGood", startTimeMillis: String(startMs), endTimeMillis: String(endMs) });
+      if (inner) params.set("cursor", inner);
       let res: RecordsPage;
       try {
         res = await getWithRetry<RecordsPage>(client, `${base}?${params}`, opts);
       } catch (e) {
-        // Some accounts may need a time range; ask again with one that covers everything.
-        if (!withTimes && e instanceof RobloxApiError && e.status === 400 && /missing request parameter/i.test(e.message)) {
-          withTimes = true;
-          return this.page(cursor, opts);
-        }
+        // A page cursor that no longer works only costs this range: start it again (sales already kept are recognised).
+        if (inner && e instanceof RobloxApiError && e.status === 400) return this.page(`W${startMs}-${endMs}|${tail()}`, opts);
         throw e;
       }
       if (!Array.isArray(res.transactions)) throw new RobloxApiError("Unexpected answer from the transaction records service", 502);
-      return {
-        rows: res.transactions.map((r) => ({ created: r.createdTime, sale: toSaleFromRecord(r) })),
-        next: res.hasMore === false ? null : (res.nextCursor ?? null),
-      };
+      const rows = res.transactions.map((r) => ({ created: r.createdTime, sale: toSaleFromRecord(r) }));
+
+      // If the range isn't honoured, older ranges come back with recent sales: stop
+      // here and let the economy service carry on from the oldest sale seen.
+      if (rows.some((r) => Date.parse(r.created) > endMs + DAY_MS)) {
+        return { rows: [], next: null, handoff: (oldestSeen ?? endMs) - HANDOFF_SLACK_MS };
+      }
+      for (const r of rows) oldestSeen = Math.min(oldestSeen ?? Infinity, Date.parse(r.created));
+
+      if (res.hasMore !== false && res.nextCursor) return { rows, next: `W${startMs}-${endMs}|${res.nextCursor}${tail()}` };
+      // This range is done. The records service only keeps recent sales (about 40 days for a busy store), so
+      // only go on to the 90 days before it if this range's sales reached back to its start, or none have
+      // turned up yet. Otherwise its sales end here: the economy service carries on from the oldest one it
+      // gave, so nothing in between is skipped.
+      const reachedStart = oldestSeen === null || oldestSeen <= startMs + 2 * DAY_MS;
+      if (startMs > RECORDS_START && reachedStart) return { rows, next: recordsWindowCursor(startMs - 1, oldestSeen).slice(4), nextRangeEnd: startMs - 1 };
+      return { rows, next: null, handoff: (oldestSeen ?? endMs) - HANDOFF_SLACK_MS };
     },
   };
 }
 
-/** The older economy service. Its cursors don't last between visits. */
+/**
+ * The older economy service. Its cursors don't last between visits. A cursor
+ * "S<moment>|<page>" skips sales from that moment on (the records service had them).
+ */
 function economySource(client: RobloxClient, creator: Creator): SalesSource {
   const base = `${ECONOMY}/v2/${creator.type === "Group" ? "groups" : "users"}/${creator.id}/transactions`;
   return {
     name: "eco",
     async page(cursor, opts) {
+      const m = /^S(\d+)\|(.*)$/.exec(cursor);
+      const skipFrom = m ? Number(m[1]) : null;
+      const inner = m ? m[2] : cursor;
       const params = new URLSearchParams({ transactionType: "Sale", limit: "100" });
-      if (cursor) params.set("cursor", cursor);
+      if (inner) params.set("cursor", inner);
       const res = await getWithRetry<TransactionPage>(client, `${base}?${params}`, opts);
-      return { rows: res.data.map((r) => ({ created: r.created, sale: toSaleTransaction(r) })), next: res.nextPageCursor };
+      const rows = res.data.map((r) => ({ created: r.created, sale: skipFrom !== null && Date.parse(r.created) >= skipFrom ? null : toSaleTransaction(r) }));
+      // Keep skipping until paging gets past the moment the records service started at.
+      const stillSkipping = skipFrom !== null && rows.length > 0 && Date.parse(rows.at(-1)!.created) >= skipFrom;
+      const next = res.nextPageCursor ? (stillSkipping ? `S${skipFrom}|${res.nextPageCursor}` : res.nextPageCursor) : null;
+      return { rows, next };
     },
   };
 }
@@ -209,6 +284,8 @@ const recordsRefused = new Set<string>();
 /** Forgets which creators fell back (for tests). */
 export function resetSalesSources() {
   recordsRefused.clear();
+  servicePace.rec = 0;
+  servicePace.eco = 0;
 }
 
 /** The records service refused (not a passing problem): worth trying the economy service instead. */
@@ -241,6 +318,7 @@ export async function listSales(
     onProgress,
     onPage,
     beforePage,
+    onRateLimited: reportRateLimit,
     signal,
   }: {
     maxPages?: number;
@@ -250,6 +328,8 @@ export async function listSales(
     onPage?: (soFar: TransactionResult) => void;
     /** Awaited before each page, so a lower-priority load can wait its turn. */
     beforePage?: () => Promise<void> | void;
+    /** Roblox said to slow down; paging carries on after `waitMs`. */
+    onRateLimited?: (waitMs: number) => void;
     signal?: AbortSignal;
   } = {},
 ): Promise<TransactionResult> {
@@ -260,10 +340,14 @@ export async function listSales(
   let cursor = tagged ? fromCursor.slice(4) : fromCursor;
 
   const transactions: SaleTransaction[] = [];
-  let pace = 0;
+
   // "" is the newest page, which is no help as a place to carry on from.
-  const resume = (c: string) => (c ? `${source.name}:${c}` : null);
-  const onRateLimited = () => (pace = pace ? Math.min(MAX_PACE_MS, pace * 2) : RATE_LIMITED_PACE_MS);
+  const resume = (c: string, name: SalesSource["name"] = source.name) => (c ? `${name}:${c}` : null);
+  const onRateLimited = (waitMs: number) => {
+    const pace = servicePace[source.name];
+    servicePace[source.name] = pace ? Math.min(MAX_PACE_MS, pace * 2) : RATE_LIMITED_PACE_MS;
+    reportRateLimit?.(waitMs);
+  };
   for (let page = 0; page < maxPages; page++) {
     if (signal?.aborted) break;
     if (beforePage) {
@@ -293,13 +377,24 @@ export async function listSales(
       }
       if (row.sale) transactions.push(row.sale);
     }
-    onProgress?.({ pages: page + 1, sales: transactions.length, oldest: transactions.at(-1)?.created ?? null });
+    const skipping = res.rows.length > 0 && res.rows.every((r) => r.sale === null) && source.name === "eco" && cursor.startsWith("S");
+    onProgress?.({ pages: page + 1, sales: transactions.length, oldest: transactions.at(-1)?.created ?? null, reached: res.rows.at(-1)?.created ?? null, skipping });
     // This page has the sales just past `since`, so a longer load starts here.
     if (reachedSince) return { transactions, reachedSince, reachedEnd: false, truncated: false, resumeCursor: resume(cursor) };
+    // Nothing newer than `since` is left: the next range, or what the economy service would add, is all older.
+    const olderThanSince = since && ((res.nextRangeEnd !== undefined && res.nextRangeEnd < since.getTime()) || (!res.next && res.handoff !== undefined && res.handoff < since.getTime()));
+    if (olderThanSince) return { transactions, reachedSince: true, reachedEnd: false, truncated: false, resumeCursor: res.next ? resume(res.next) : resume(`S${res.handoff}|`, "eco") };
+    // The records service has nothing older: the economy service carries on from where it started.
+    if (!res.next && res.handoff !== undefined) {
+      source = economySource(client, creator);
+      cursor = `S${res.handoff}|`;
+      onPage?.({ transactions: [...transactions], reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) });
+      continue;
+    }
     if (!res.next) return { transactions, reachedSince: false, reachedEnd: true, truncated: false, resumeCursor: null };
     cursor = res.next;
     onPage?.({ transactions: [...transactions], reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) });
-    if (pace) await sleep(pace, signal);
+    if (servicePace[source.name]) await sleep(servicePace[source.name], signal);
   }
   return { transactions, reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) };
 }

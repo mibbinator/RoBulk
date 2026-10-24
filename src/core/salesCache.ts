@@ -1,6 +1,9 @@
 import type { SaleTransaction } from "./earnings";
 import type { StorageLike } from "./history";
 import type { OverflowStore } from "./overflowStore";
+import { RECORDS_START, recordsWindowCursor } from "../api/economy";
+
+const HANDOFF_SLACK_MS = 5_000;
 
 // Sale history cached in the browser, so the earnings report (and especially
 // "All time") doesn't page through every sale on each load. Roblox only pages
@@ -120,7 +123,8 @@ export function mergeOlder(cache: SalesCacheEntry, fetched: FetchOutcome, stopAt
  * pointing at them. About a quarter of the size of plain objects.
  */
 export interface StoredSales {
-  v: 2;
+  /** 3 from when sales come from the records service in time ranges; 2 before. */
+  v: 2 | 3;
   coveredFrom: string | null;
   updatedAt: string;
   olderCursor?: string | null;
@@ -157,7 +161,7 @@ export function packSales(entry: SalesCacheEntry, limit: number | null = DEFAULT
     indexOf(buyerIndex, buyers, `${s.buyer.id}:${s.buyer.name}`, [s.buyer.id, s.buyer.name]),
     s.isPending ? 1 : 0,
   ]);
-  return { v: 2, coveredFrom, updatedAt: entry.updatedAt, olderCursor, items, buyers, rows };
+  return { v: 3, coveredFrom, updatedAt: entry.updatedAt, olderCursor, items, buyers, rows };
 }
 
 export function unpackSales(stored: StoredSales): SalesCacheEntry {
@@ -170,6 +174,38 @@ export function unpackSales(stored: StoredSales): SalesCacheEntry {
     olderCursor: stored.olderCursor ?? null,
     sales: stored.rows.map(([id, created, robux, item, buyer, pending]) => ({ id, created, robux, isPending: pending === 1, item: items[item], buyer: buyers[buyer] })),
   };
+}
+
+/**
+ * Saved sales from the version that read the records service without time
+ * ranges. That only lists recent sales, so a history it called complete may
+ * not be: carry on by date from its oldest sale. Its page cursors are turned
+ * into time-range ones too.
+ */
+export function fromBeforeTimeRanges(entry: SalesCacheEntry): SalesCacheEntry {
+  const oldest = entry.sales.at(-1);
+  if (!oldest) return entry;
+  const oldestMs = Date.parse(oldest.created);
+  if (entry.coveredFrom === null && oldest.id.startsWith("rec:") && oldestMs > RECORDS_START) {
+    return { ...entry, coveredFrom: oldest.created, olderCursor: recordsWindowCursor(oldestMs, oldestMs) };
+  }
+  if (entry.olderCursor?.startsWith("rec:") && !entry.olderCursor.startsWith("rec:W")) {
+    return { ...entry, olderCursor: recordsWindowCursor(Date.parse(entry.coveredFrom ?? oldest.created), oldestMs) };
+  }
+  return entry;
+}
+
+/**
+ * An earlier version handed over to the economy service skipping everything
+ * since the records service's start date, though that service only had recent
+ * sales, so the sales in between were never loaded. Skip only what's loaded.
+ */
+export function repairHandoff(entry: SalesCacheEntry): SalesCacheEntry {
+  const m = entry.olderCursor ? /^eco:S(\d+)\|/.exec(entry.olderCursor) : null;
+  const oldest = entry.sales.at(-1);
+  if (!m || Number(m[1]) !== RECORDS_START || !oldest) return entry;
+  // The old cursor pointed deep into skipped pages; economy cursors don't last anyway, so start from the newest again.
+  return { ...entry, olderCursor: `eco:S${Date.parse(oldest.created) - HANDOFF_SLACK_MS}|` };
 }
 
 const PREFIX = "sales:";
@@ -199,7 +235,9 @@ export class SalesCache {
       if (stored && "inOverflow" in stored) stored = (await this.options.overflow?.get(creatorKey)) as StoredSales | undefined;
       if (!stored) return null;
       // Entries saved before the compact format are plain objects.
-      return "v" in stored ? unpackSales(stored as StoredSales) : (stored as SalesCacheEntry);
+      if (!("v" in stored)) return stored as SalesCacheEntry;
+      const entry = unpackSales(stored as StoredSales);
+      return repairHandoff((stored as StoredSales).v === 2 ? fromBeforeTimeRanges(entry) : entry);
     } catch {
       return null;
     }

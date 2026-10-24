@@ -364,7 +364,12 @@ describe("Shell", () => {
           details: { productId: 900, productName: "On-sale shirt", productTypeId: 8, assetId: 102 },
           createdTime: daysAgo(days),
         });
-        return json({ transactions: [sale(1, "178318428"), sale(2, "178318428")], nextCursor: null, hasMore: false });
+        // Like the real service, only the sales inside the requested time range.
+        const q = new URL(url).searchParams;
+        const inRange = [sale(1, "178318428"), sale(2, "178318428")].filter(
+          (r) => Date.parse(r.createdTime) >= Number(q.get("startTimeMillis")) && Date.parse(r.createdTime) <= Number(q.get("endTimeMillis")),
+        );
+        return json({ transactions: inRange, nextCursor: null, hasMore: false });
       }
       if (url.includes("users.roblox.com/v1/users") && init.method === "POST") return json({ data: [{ id: 178318428, name: "NomGreen", displayName: "Green" }] });
       return fetchImpl(input, init);
@@ -376,8 +381,10 @@ describe("Shell", () => {
     render(<Shell onClose={() => {}} initialTab="earnings" />, root);
 
     const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
-    await waitFor(() => earned.querySelector(".rb-stat-value")!.textContent === "R$6");
+    // The two records sales (R$3 each), plus the economy service's shirt sale from 3 days ago (R$4): older than
+    // anything the records service gave, so loading carries on there. Its copies of the two recent sales are skipped.
+    await waitFor(() => earned.querySelector(".rb-stat-value")!.textContent === "R$10");
     await waitFor(() => byText(root, "td a", "NomGreen"));
-    expect(records.mock.calls.some((c) => String(c[0]).includes("economy.roblox.com/v2/users/1/transactions"))).toBe(false);
+    expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$10");
   }, 20000);
 });

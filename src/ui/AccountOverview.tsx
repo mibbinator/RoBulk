@@ -7,67 +7,84 @@ import { extensionOverflowStore } from "../core/overflowStore";
 import { SalesCache, cacheCovers } from "../core/salesCache";
 import { DEFAULT_SETTINGS, readSettings } from "../core/settings";
 import { robux } from "./charts";
-import { Segmented, downloadText } from "./components";
+import { downloadText } from "./components";
 import { salesLoader, type SalesLoader } from "./salesLoader";
-import { creatorKey, initialCreator, makeStorage, rangeLabel, type ReportRange } from "./workspace";
+import { creatorKey, initialCreator, makeStorage } from "./workspace";
 
 // Every creator the user can see the earnings of, side by side. Nothing is
-// loaded until "Run report" is pressed. The group the dashboard has selected
-// goes first, as a normal load; the others follow one at a time as background
-// loads, which wait whenever the selected group (or anything the RoBulk panel
-// asks for) is loading, so they never page through Roblox at the same time.
-// Each one's sales are kept for the page visit like the Earnings report's.
+// loaded until a report is run. "Run report" loads enough for the last 7, 30
+// and 90 days at once (and the periods before them, for the change); the
+// all-time report is run separately and carries on from where that stopped.
+//
+// The group the dashboard has selected goes first, as a normal load; the
+// others follow one at a time as background loads, which wait whenever the
+// selected group (or anything the RoBulk panel asks for) is loading, so they
+// never page through Roblox at the same time. Each one's sales are kept for
+// the page visit like the Earnings report's.
 //
 // The table lists the user's own account and the groups they own first. For
 // groups they're only a member of, "Your share" is their recurring payout
 // percentage of what the group earned.
 
 const DAY = 86_400_000;
+const PERIODS = [7, 30, 90] as const;
+type Period = (typeof PERIODS)[number];
+/** What "Run report" loads: the longest period and the one before it. */
+const recentWant = () => new Date(Date.now() - 90 * 2 * DAY);
+
+interface PeriodSums {
+  current: EarningsSummary;
+  previous: EarningsSummary;
+}
 
 interface Row {
   creator: Creator;
   owned: boolean;
   /** Recurring payout percentage for a group the user doesn't own; null when their role can't see it. */
   percent: number | null;
-  /** What the user gets: everything for what they own, their payout percentage of the rest. */
-  share: number | null;
   loader: SalesLoader;
-  current: EarningsSummary | null;
-  previous: EarningsSummary | null;
-  /** Loaded back to the start of the range (and the period before it). */
-  complete: boolean;
+  periods: Partial<Record<Period, PeriodSums>>;
+  all: EarningsSummary | null;
+  /** Loaded far enough back for the recent periods / for all time. */
+  recentDone: boolean;
+  allDone: boolean;
 }
 
-const wantFor = (range: ReportRange) => (range === "all" ? null : new Date(Date.now() - range * 2 * DAY));
-
-function summaries(loader: SalesLoader, range: ReportRange) {
+function summaries(loader: SalesLoader): Pick<Row, "periods" | "all" | "recentDone" | "allDone"> {
   const entry = loader.state.entry;
-  if (!entry) return { current: null, previous: null, complete: false };
+  if (!entry) return { periods: {}, all: null, recentDone: false, allDone: false };
   const now = new Date();
-  const complete = cacheCovers(entry, wantFor(range));
-  if (range === "all") {
-    const first = entry.coveredFrom ?? entry.sales.at(-1)?.created ?? now.toISOString();
-    return { current: summarize(entry.sales, new Date(first), now), previous: null, complete };
+  const periods: Row["periods"] = {};
+  for (const days of PERIODS) {
+    const start = new Date(now.getTime() - (days - 1) * DAY);
+    const prevEnd = new Date(start.getTime() - DAY);
+    const prevStart = new Date(prevEnd.getTime() - (days - 1) * DAY);
+    periods[days] = { current: summarize(entry.sales, start, now), previous: summarize(entry.sales, prevStart, prevEnd) };
   }
-  const start = new Date(now.getTime() - (range - 1) * DAY);
-  const prevEnd = new Date(start.getTime() - DAY);
-  const prevStart = new Date(prevEnd.getTime() - (range - 1) * DAY);
-  return { current: summarize(entry.sales, start, now), previous: summarize(entry.sales, prevStart, prevEnd), complete };
+  const allDone = cacheCovers(entry, null);
+  const first = entry.coveredFrom ?? entry.sales.at(-1)?.created ?? now.toISOString();
+  return { periods, all: allDone ? summarize(entry.sales, new Date(first), now) : null, recentDone: cacheCovers(entry, recentWant()), allDone };
 }
 
 const csvCell = (v: string | number) => (typeof v === "number" ? String(v) : `"${v.replace(/"/g, '""')}"`);
+const share = (r: Row, robuxEarned: number) => (r.percent == null ? null : Math.floor((robuxEarned * r.percent) / 100));
+const changeLabel = (cur: number, prev: number) => {
+  const d = change(cur, prev);
+  return d == null ? "New" : `${d >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(d * 100))}%`;
+};
 
-type RunState = "idle" | "running" | "done" | "stopped";
+type Job = "recent" | "all";
 
 export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => void; onOpenCreator: (creator: Creator) => void }) {
   const client = useMemo(() => createClient(), []);
   const storage = useMemo(makeStorage, []);
   const [loaders, setLoaders] = useState<SalesLoader[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [range, setRange] = useState<ReportRange>(30);
-  /** The range the last run loaded; the table shows that until the next run. */
-  const [ranFor, setRanFor] = useState<ReportRange | null>(null);
-  const [runState, setRunState] = useState<RunState>("idle");
+  /** The report running now, if any. */
+  const [job, setJob] = useState<Job | null>(null);
+  /** The reports run so far on this visit. */
+  const [ran, setRan] = useState<Set<Job>>(new Set());
+  const [stopped, setStopped] = useState(false);
   const [current, setCurrent] = useState<string | null>(null);
   /** The group the dashboard has selected; its load is RoBulk's own, not the report's. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -76,7 +93,7 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
   const cancelled = useRef(false);
   /** Bumped when any loader changes, a few times a second at most. */
   const [tick, setTick] = useState(0);
-  const running = runState === "running";
+  const running = job !== null;
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -108,7 +125,8 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
     cancelled.current = true;
     // The selected group's load belongs to RoBulk itself; only stop the background ones.
     for (const l of loaders) if (creatorKey(l.creator) !== selectedKey) l.stop();
-    setRunState("stopped");
+    setJob(null);
+    setStopped(true);
     setCurrent(null);
   };
 
@@ -124,81 +142,104 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const run = async () => {
+  /** The creators and their loaders, found once per visit to the overview. */
+  const setUp = async (): Promise<{ list: SalesLoader[]; selected: string }> => {
+    if (loaders.length && selectedKey) return { list: loaders, selected: selectedKey };
+    const settings = await readSettings(storage).catch(() => DEFAULT_SETTINGS);
+    const cache = new SalesCache(storage, { maxSales: () => settings.maxStoredSales, overflow: extensionOverflowStore() });
+    setCurrent("Finding your groups…");
+    const all = await cachedCreators(client, storage);
+    const visible = all.filter((c) => c.access.earnings);
+    // The group the dashboard has selected first, then the rest in their usual order.
+    const selected = creatorKey(initialCreator(all));
+    setSelectedKey(selected);
+    const ordered = [...visible.filter((c) => creatorKey(c) === selected), ...visible.filter((c) => creatorKey(c) !== selected)];
+    const list = ordered.map((c) => salesLoader(c, client, cache, () => settings.rememberSales));
+    setLoaders(list);
+
+    // For groups the user doesn't own: their cut of the group's recurring payouts.
+    const me = all.find((c) => c.type === "User");
+    setCurrent("Checking your payout share in groups you don't own…");
+    const notOwned = visible.filter((c) => c.type === "Group" && !c.owned);
+    const found = await Promise.all(notOwned.map(async (c) => [creatorKey(c), me ? await payoutPercentage(client, c.id, me.id) : null] as const));
+    setPercents(new Map(found));
+    return { list, selected };
+  };
+
+  const run = async (which: Job) => {
     cancelled.current = false;
     setError(null);
-    setRunState("running");
-    setRanFor(range);
+    setStopped(false);
+    setJob(which);
     try {
-      const settings = await readSettings(storage).catch(() => DEFAULT_SETTINGS);
-      const cache = new SalesCache(storage, { maxSales: () => settings.maxStoredSales, overflow: extensionOverflowStore() });
-      setCurrent("Finding your groups…");
-      const all = await cachedCreators(client, storage);
-      const visible = all.filter((c) => c.access.earnings);
-      // The group the dashboard has selected first, then the rest in their usual order.
-      const selected = initialCreator(all);
-      setSelectedKey(creatorKey(selected));
-      const ordered = [...visible.filter((c) => creatorKey(c) === creatorKey(selected)), ...visible.filter((c) => creatorKey(c) !== creatorKey(selected))];
-      const list = ordered.map((c) => salesLoader(c, client, cache, () => settings.rememberSales));
-      setLoaders(list);
-
-      // For groups the user doesn't own: their cut of the group's recurring payouts.
-      const me = all.find((c) => c.type === "User");
-      setCurrent("Checking your payout share in groups you don't own…");
-      const notOwned = visible.filter((c) => c.type === "Group" && !c.owned);
-      const found = await Promise.all(notOwned.map(async (c) => [creatorKey(c), me ? await payoutPercentage(client, c.id, me.id) : null] as const));
-      setPercents(new Map(found));
-
-      const want = wantFor(range);
+      const { list, selected } = await setUp();
+      // All time carries on from wherever the recent report (or anything else) got to.
+      const want = which === "all" ? null : recentWant();
       for (const loader of list) {
         if (cancelled.current) return;
         setCurrent(loader.creator.name);
-        // Already loaded far enough back on this visit: nothing to ask Roblox for.
-        loader.load(want, { background: creatorKey(loader.creator) !== creatorKey(selected) });
+        loader.load(want, { background: creatorKey(loader.creator) !== selected });
         await loader.whenDone();
       }
-      if (!cancelled.current) setRunState("done");
+      if (!cancelled.current) setRan((prev) => new Set([...prev, which]));
     } catch (e) {
       setError(`Couldn't run the report: ${(e as Error).message}`);
-      setRunState("stopped");
+      setStopped(true);
     }
+    if (!cancelled.current) setJob(null);
     setCurrent(null);
   };
 
-  const shown = ranFor ?? range;
   const rows: Row[] = useMemo(() => {
     const list = loaders.map((loader): Row => {
       const owned = loader.creator.type === "User" || loader.creator.owned === true;
-      const sums = summaries(loader, shown);
       const percent = owned ? 100 : (percents.get(creatorKey(loader.creator)) ?? null);
-      const earned = sums.current?.totalRobux ?? 0;
-      return { creator: loader.creator, loader, owned, percent, share: percent == null ? null : Math.floor((earned * percent) / 100), ...sums };
+      return { creator: loader.creator, loader, owned, percent, ...summaries(loader) };
     });
     // Your account, then the groups you own, then the rest.
     const rank = (r: Row) => (r.creator.type === "User" ? 0 : r.owned ? 1 : 2);
     return list.sort((a, b) => rank(a) - rank(b));
-  }, [loaders, shown, tick, percents]);
-  const totalShare = rows.reduce((sum, r) => sum + (r.share ?? 0), 0);
-  const unknownShares = rows.filter((r) => r.share == null).length;
-  const total = rows.reduce((sum, r) => sum + (r.current?.totalRobux ?? 0), 0);
-  const totalPrev = rows.reduce((sum, r) => sum + (r.previous?.totalRobux ?? 0), 0);
-  const totalSales = rows.reduce((sum, r) => sum + (r.current?.sales ?? 0), 0);
-  const totalPending = rows.reduce((sum, r) => sum + (r.current?.pendingRobux ?? 0), 0);
-  const totalBalance = rows.reduce((sum, r) => sum + (r.loader.state.balance ?? 0), 0);
-  const largest = Math.max(1, ...rows.map((r) => r.current?.totalRobux ?? 0));
-  const doneCount = rows.filter((r) => r.complete && !r.loader.state.loading).length;
+    // Also redone when a report finishes, so the last group's numbers show straight away.
+  }, [loaders, tick, percents, job, ran]);
+
+  const showAll = ran.has("all") || job === "all" || rows.some((r) => r.allDone && r.all);
+  const sum = (pick: (r: Row) => number | null | undefined) => rows.reduce((total, r) => total + (pick(r) ?? 0), 0);
+  const totals = Object.fromEntries(PERIODS.map((d) => [d, { cur: sum((r) => r.periods[d]?.current.totalRobux), prev: sum((r) => r.periods[d]?.previous.totalRobux) }])) as Record<
+    Period,
+    { cur: number; prev: number }
+  >;
+  const totalShare90 = sum((r) => share(r, r.periods[90]?.current.totalRobux ?? 0));
+  const totalAll = sum((r) => r.all?.totalRobux);
+  const totalShareAll = sum((r) => (r.all ? share(r, r.all.totalRobux) : 0));
+  const totalPending = sum((r) => r.periods[90]?.current.pendingRobux);
+  const totalBalance = sum((r) => r.loader.state.balance);
+  const hiddenShares = rows.filter((r) => r.percent == null).length;
+  const largest = Math.max(1, ...rows.map((r) => r.periods[90]?.current.totalRobux ?? 0));
+  const doneCount = rows.filter((r) => (job === "all" ? r.allDone : r.recentDone) && !r.loader.state.loading).length;
 
   const exportCsv = () => {
-    const lines = [["creator", "owned", "earned", "your share %", "your share", "sales", "pending", "balance"].join(",")];
+    const head = ["creator", "owned", "earned 7 days", "earned 30 days", "earned 90 days", ...(showAll ? ["earned all time"] : []), "your share %", "your share 90 days", "pending", "balance"];
+    const lines = [head.join(",")];
     for (const r of rows) {
       lines.push(
-        [csvCell(r.creator.name), r.owned ? "yes" : "no", r.current?.totalRobux ?? 0, r.percent ?? "", r.share ?? "", r.current?.sales ?? 0, r.current?.pendingRobux ?? 0, r.loader.state.balance ?? ""]
+        [
+          csvCell(r.creator.name),
+          r.owned ? "yes" : "no",
+          ...PERIODS.map((d) => r.periods[d]?.current.totalRobux ?? ""),
+          ...(showAll ? [r.all?.totalRobux ?? ""] : []),
+          r.percent ?? "",
+          share(r, r.periods[90]?.current.totalRobux ?? 0) ?? "",
+          r.periods[90]?.current.pendingRobux ?? "",
+          r.loader.state.balance ?? "",
+        ]
           .map(String)
           .join(","),
       );
     }
-    downloadText(`account-overview-${shown === "all" ? "all-time" : `${shown}d`}.csv`, lines.join("\r\n") + "\r\n", "text/csv");
+    downloadText(`account-overview${showAll ? "-all-time" : ""}.csv`, lines.join("\r\n") + "\r\n", "text/csv");
   };
+
+  const columns = 6 + (showAll ? 1 : 0) + 2;
 
   return (
     <div class="rb-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
@@ -215,17 +256,9 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
         </header>
 
         <div class="rb-toolbar">
-          <Segmented<string>
-            label="Date range"
-            value={String(range)}
-            onChange={(v) => !running && setRange(v === "all" ? "all" : (Number(v) as ReportRange))}
-            options={[
-              ["7", "Last 7 days"],
-              ["30", "Last 30 days"],
-              ["90", "Last 90 days"],
-              ["all", "All time"],
-            ]}
-          />
+          <span class="rb-muted rb-small">
+            {ran.has("all") ? "Last 7, 30 and 90 days, and all time" : ran.has("recent") ? "Last 7, 30 and 90 days" : "Last 7, 30 and 90 days, all at once"}
+          </span>
           <div class="rb-spacer" />
           {running ? (
             <button class="rb-btn rb-btn-ghost" onClick={stop}>
@@ -236,8 +269,13 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
               <button class="rb-btn rb-btn-ghost" disabled={rows.length === 0} onClick={exportCsv}>
                 Export (.csv)
               </button>
-              <button class="rb-btn rb-btn-primary" onClick={run}>
-                {runState === "idle" ? "Run report" : ranFor === range ? "Run again" : "Run report"}
+              {ran.has("recent") && (
+                <button class="rb-btn" onClick={() => run("all")} title="Carries on from where the 90-day report stopped">
+                  {ran.has("all") ? "Run all-time report again" : "Run all-time report"}
+                </button>
+              )}
+              <button class="rb-btn rb-btn-primary" onClick={() => run("recent")}>
+                {ran.has("recent") ? "Run again" : "Run report"}
               </button>
             </>
           )}
@@ -246,12 +284,13 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
         <main class="rb-body rb-report">
           {error && <div class="rb-empty rb-error">{error}</div>}
 
-          {runState === "idle" && !error && (
+          {!ran.has("recent") && !running && !stopped && !error && (
             <div class="rb-overview-intro">
               <h3>Earnings for your account and all your groups, side by side</h3>
               <p>
-                Pick a period and press <strong>Run report</strong>. RoBulk loads your selected group first, then the rest one at a time, so it can take a few minutes if
-                you have lots of groups or a long period. Anything already loaded on this visit is reused straight away.
+                Press <strong>Run report</strong> to see the last 7, 30 and 90 days for each of them at once. RoBulk loads your selected group first, then the rest one at a
+                time, so it can take a few minutes if you have lots of groups. Once it's done, <strong>Run all-time report</strong> carries on from there to your first
+                sale.
               </p>
             </div>
           )}
@@ -265,46 +304,41 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                 {current && loaders.length > 0 && (
                   <>
                     {" "}
-                    Now loading {current} ({Math.min(doneCount + 1, loaders.length)} of {loaders.length}).
+                    {job === "all" ? "All time: " : ""}Now loading {current} ({Math.min(doneCount + 1, loaders.length)} of {loaders.length}).
                   </>
                 )}
               </span>
             </div>
           )}
-          {runState === "stopped" && !error && <div class="rb-banner rb-banner-inline">Stopped. Press Run report to carry on from where it got to.</div>}
-          {!running && ranFor !== null && ranFor !== range && (
-            <div class="rb-banner rb-banner-inline">
-              Showing the {rangeLabel(ranFor)}. Press <strong>Run report</strong> to load the {rangeLabel(range)}.
-            </div>
-          )}
-          {runState !== "idle" && loaders.length === 0 && !running && !error && <div class="rb-empty">None of your groups let your role see their revenue.</div>}
+          {stopped && !error && <div class="rb-banner rb-banner-inline">Stopped. Run the report again to carry on from where it got to.</div>}
+          {(ran.has("recent") || running) && loaders.length === 0 && !running && !error && <div class="rb-empty">None of your groups let your role see their revenue.</div>}
 
           {rows.length > 0 && (
             <>
               <div class="rb-kpis">
+                {PERIODS.map((d) => (
+                  <div class="rb-stat" key={d}>
+                    <span class="rb-stat-label">Earned, last {d} days</span>
+                    <strong class="rb-stat-value">{robux(totals[d].cur)}</strong>
+                    {totals[d].prev > 0 && (
+                      <span class={`rb-stat-delta ${totals[d].cur >= totals[d].prev ? "up" : "down"}`}>{changeLabel(totals[d].cur, totals[d].prev)} vs the {d} days before</span>
+                    )}
+                  </div>
+                ))}
+                {showAll && (
+                  <div class="rb-stat">
+                    <span class="rb-stat-label">Earned, all time</span>
+                    <strong class="rb-stat-value">{robux(totalAll)}</strong>
+                    <span class="rb-stat-hint">Your share: {robux(totalShareAll)}</span>
+                  </div>
+                )}
                 <div class="rb-stat">
-                  <span class="rb-stat-label">Earned, {rangeLabel(shown)}</span>
-                  <strong class="rb-stat-value">{robux(total)}</strong>
-                  {shown !== "all" && totalPrev > 0 && (
-                    <span class={`rb-stat-delta ${total >= totalPrev ? "up" : "down"}`}>
-                      {total >= totalPrev ? "▲" : "▼"} {Math.abs(Math.round((change(total, totalPrev) ?? 0) * 100))}% vs previous period
-                    </span>
-                  )}
-                  <span class="rb-stat-hint">
-                    Across {rows.length} {rows.length === 1 ? "account" : "accounts and groups"}
-                  </span>
-                </div>
-                <div class="rb-stat">
-                  <span class="rb-stat-label">Your share</span>
-                  <strong class="rb-stat-value">{robux(totalShare)}</strong>
+                  <span class="rb-stat-label">Your share, last 90 days</span>
+                  <strong class="rb-stat-value">{robux(totalShare90)}</strong>
                   <span class="rb-stat-hint">
                     Everything from what you own, plus your payout share of other groups
-                    {unknownShares > 0 ? ` (${unknownShares} ${unknownShares === 1 ? "group hides" : "groups hide"} their payouts from your role)` : ""}
+                    {hiddenShares > 0 ? ` (${hiddenShares} ${hiddenShares === 1 ? "group hides" : "groups hide"} their payouts from your role)` : ""}
                   </span>
-                </div>
-                <div class="rb-stat">
-                  <span class="rb-stat-label">Sales</span>
-                  <strong class="rb-stat-value">{totalSales.toLocaleString()}</strong>
                 </div>
                 <div class="rb-stat">
                   <span class="rb-stat-label">Pending</span>
@@ -325,10 +359,11 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                     <thead>
                       <tr>
                         <th>Account or group</th>
-                        <th>Earned, {rangeLabel(shown)}</th>
-                        <th class="num">Change</th>
-                        <th class="num">Your share</th>
-                        <th class="num">Sales</th>
+                        <th class="num">Last 7 days</th>
+                        <th class="num">Last 30 days</th>
+                        <th>Last 90 days</th>
+                        {showAll && <th class="num">All time</th>}
+                        <th class="num">Your share, 90 days</th>
                         <th class="num">Pending</th>
                         <th class="num">Balance</th>
                         <th />
@@ -336,16 +371,26 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                     </thead>
                     <tbody>
                       {rows.map((r, i) => {
-                        const earned = r.current?.totalRobux ?? 0;
                         // A heading where the groups you don't own start.
                         const heading =
                           i === 0 || (rows[i - 1].owned && !r.owned) ? (
                             <tr class="rb-row-heading" key={`h-${r.owned}`}>
-                              <th colSpan={8}>{r.owned ? "Your account and groups you own" : "Groups you don't own: your share is your recurring payout percentage"}</th>
+                              <th colSpan={columns}>{r.owned ? "Your account and groups you own" : "Groups you don't own: your share is your recurring payout percentage"}</th>
                             </tr>
                           ) : null;
-                        const delta = r.previous && r.complete ? change(earned, r.previous.totalRobux) : undefined;
                         const { loading, progress } = r.loader.state;
+                        const cell = (d: Period) => {
+                          const p = r.periods[d];
+                          if (!p) return "—";
+                          return (
+                            <>
+                              {robux(p.current.totalRobux)}
+                              {r.recentDone && <div class="rb-small rb-muted">{changeLabel(p.current.totalRobux, p.previous.totalRobux)}</div>}
+                            </>
+                          );
+                        };
+                        const earned90 = r.periods[90]?.current.totalRobux ?? 0;
+                        const share90 = share(r, earned90);
                         return [
                           heading,
                           <tr key={creatorKey(r.creator)}>
@@ -353,33 +398,32 @@ export function AccountOverview({ onClose, onOpenCreator }: { onClose: () => voi
                               <strong>{r.creator.type === "User" ? `${r.creator.name} (you)` : r.creator.name}</strong>
                               {creatorKey(r.creator) === selectedKey && <span class="rb-chip rb-chip-quiet">Selected</span>}
                               {loading && <div class="rb-small rb-muted">{progress ?? "Loading…"}</div>}
-                              {!loading && !r.complete && r.current && <div class="rb-small rb-muted">Not loaded all the way back yet</div>}
-                              {!loading && !r.current && <div class="rb-small rb-muted">{running ? "Waiting its turn…" : "Not loaded"}</div>}
+                              {!loading && !r.loader.state.entry && <div class="rb-small rb-muted">{running ? "Waiting its turn…" : "Not loaded"}</div>}
+                              {!loading && r.loader.state.entry && !r.recentDone && <div class="rb-small rb-muted">Not loaded all the way back yet</div>}
                             </td>
+                            <td class="num">{cell(7)}</td>
+                            <td class="num">{cell(30)}</td>
                             <td>
                               <div class="rb-overview-bar-cell">
-                                <div class="rb-overview-bar" title={robux(earned)}>
-                                  <div style={{ width: `${(earned / largest) * 100}%` }} />
+                                <div class="rb-overview-bar" title={robux(earned90)}>
+                                  <div style={{ width: `${(earned90 / largest) * 100}%` }} />
                                 </div>
-                                <span class="rb-overview-value">{r.current ? robux(earned) : "—"}</span>
+                                <span class="rb-overview-value">{cell(90)}</span>
                               </div>
                             </td>
+                            {showAll && <td class="num">{r.all ? robux(r.all.totalRobux) : r.loader.state.loading && job === "all" ? "Loading…" : "—"}</td>}
                             <td class="num">
-                              {delta === undefined ? "—" : delta == null ? "New" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(delta * 100))}%`}
-                            </td>
-                            <td class="num">
-                              {r.owned ? (
-                                r.current ? robux(earned) : "—"
-                              ) : r.percent == null ? (
+                              {r.percent == null ? (
                                 <span class="rb-muted" title="Your role in this group can't see its payout percentages">Hidden</span>
+                              ) : r.owned ? (
+                                r.periods[90] ? robux(earned90) : "—"
                               ) : (
                                 <span title={`${r.percent}% recurring payout`}>
-                                  {r.current ? robux(r.share ?? 0) : "—"} <span class="rb-muted rb-small">({r.percent}%)</span>
+                                  {r.periods[90] ? robux(share90 ?? 0) : "—"} <span class="rb-muted rb-small">({r.percent}%)</span>
                                 </span>
                               )}
                             </td>
-                            <td class="num">{r.current ? r.current.sales.toLocaleString() : "—"}</td>
-                            <td class="num">{r.current ? robux(r.current.pendingRobux) : "—"}</td>
+                            <td class="num">{r.periods[90] ? robux(r.periods[90]!.current.pendingRobux) : "—"}</td>
                             <td class="num">{r.loader.state.balance == null ? "—" : robux(r.loader.state.balance)}</td>
                             <td class="num">
                               <button class="rb-link-btn" disabled={running} onClick={() => onOpenCreator(r.creator)}>

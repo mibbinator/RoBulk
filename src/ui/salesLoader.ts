@@ -47,7 +47,7 @@ interface Running {
 const covers = (outer: Date | null, inner: Date | null) => outer === null || (inner !== null && outer <= inner);
 
 /** How long to wait before trying again after Roblox fails, times the attempt number (tests shorten it). */
-export const loaderTiming = { retryMs: 4000 };
+export const loaderTiming = { retryMs: 4000, rateLimitMs: 60_000 };
 
 /** Told about every change to any loader, for things outside the panel like the sidebar. */
 const pageListeners = new Set<() => void>();
@@ -197,12 +197,19 @@ export class SalesLoader {
     const target = () => (this.running?.controller === controller ? this.running.want : null);
     this.set({ loading: true, error: null, progress: "Loading sales…", fraction: 0 });
     let failures = 0;
+    let rateLimited = 0;
     while (!signal.aborted) {
       try {
         if (await this.pass(controller, target)) break;
         failures = 0;
       } catch (e) {
         if (signal.aborted) return;
+        // Still too many requests after waiting it out: that's Roblox asking for patience, not a failure.
+        if (e instanceof RobloxApiError && e.status === 429 && rateLimited++ < 10) {
+          this.set({ progress: "Roblox asked RoBulk to slow down for a while. It'll carry on from where it got to in a minute; nothing is lost." });
+          await new Promise((r) => setTimeout(r, loaderTiming.rateLimitMs));
+          continue;
+        }
         // Everything loaded so far is kept, so trying again carries on from the last page.
         if (++failures > 3) {
           this.set({ loading: false, progress: null, fraction: null, error: `Couldn't load sales: ${(e as Error).message}. What's loaded is kept; Refresh carries on from there.` });
@@ -238,11 +245,15 @@ export class SalesLoader {
     const fetchSales = (stopAt: Date | null | (() => Date | null), label: string, startsAt: Date, already: number, onPage: (soFar: TransactionResult) => void, fromCursor?: string) => {
       const stopNow = () => (typeof stopAt === "function" ? stopAt() : stopAt);
       return listSales(this.client, this.creator, stopAt, {
-        maxPages: stopAt === null ? 5000 : 200,
+        // All time gets far more pages than a fixed date range. A load that can be widened (`stopAt` is a
+        // function) might become all time part-way, so it gets as many; a date still stops it on its own.
+        maxPages: typeof stopAt === "function" || stopAt === null ? 5000 : 200,
         fromCursor,
         signal,
         onPage,
         beforePage: () => this.waitTurn(controller),
+        onRateLimited: (waitMs) =>
+          this.set({ progress: `Roblox asked RoBulk to slow down, so it's pausing for ${Math.ceil(waitMs / 1000)} seconds and then carrying on more slowly. Nothing is lost.` }),
         onProgress: (p) => {
           const end = stopNow();
           const span = end ? startsAt.getTime() - end.getTime() : 0;
@@ -251,7 +262,11 @@ export class SalesLoader {
             progress:
               label +
               `${(already + p.sales).toLocaleString()} sales loaded` +
-              (p.oldest ? `, back to ${new Date(p.oldest).toLocaleDateString()}` : "") +
+              (p.skipping && p.reached
+                ? `. Going past sales it already has to reach older ones: at ${new Date(p.reached).toLocaleDateString()}`
+                : p.oldest
+                  ? `, back to ${new Date(p.oldest).toLocaleDateString()}`
+                  : "") +
               (end === null && !fromCursor ? ". Only the first load takes this long." : "."),
             // Paging runs newest to oldest, so how far back it's got is how far along it is.
             fraction: span > 0 ? Math.min(1, p.oldest ? (startsAt.getTime() - new Date(p.oldest).getTime()) / span : 0) : null,
