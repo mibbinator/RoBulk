@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { render } from "preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { memoryStorage } from "../core/history";
 import { Shell } from "./Shell";
-import { forgetPageSales } from "./workspace";
+import { fallbackStorage, forgetPageSales } from "./workspace";
 
 // End-to-end checks of the panel against simulated Roblox responses.
 
@@ -135,6 +136,7 @@ function mount() {
 }
 
 afterEach(() => {
+  fallbackStorage.current = null;
   forgetPageSales();
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -395,5 +397,34 @@ describe("Shell", () => {
     await waitFor(() => earned.querySelector(".rb-stat-value")!.textContent === "R$10");
     await waitFor(() => byText(root, "td a", "NomGreen"));
     expect(earned.querySelector(".rb-stat-value")!.textContent).toBe("R$10");
+  }, 20000);
+
+  it("keeps items in folders and puts a whole folder on or off sale", async () => {
+    fallbackStorage.current = memoryStorage();
+    const { root } = mount();
+    await waitFor(() => byText(root, ".rb-group-toggle", /Classic Shirts/));
+
+    byText(root, ".rb-toolbar button", "Select all")!.click();
+    (await waitFor(() => byText(root, ".rb-folders button", "+ New folder with 2 items"))).click();
+    const name = await waitFor(() => root.querySelector<HTMLInputElement>(".rb-dialog input"));
+    name.value = "Christmas set";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    (await waitFor(() => byText(root, ".rb-dialog button", "Create folder"))).click();
+
+    // The new folder opens, with both shirts in it and tagged.
+    await waitFor(() => byText(root, ".rb-folder-bar strong", "Christmas set"));
+    expect(byText(root, ".rb-folder.is-active", /Christmas set/)?.textContent).toContain("2");
+    await waitFor(() => root.querySelectorAll(".rb-folder-tag").length === 2);
+
+    // Taking the folder off sale stages only the shirt that's on sale; nothing goes to Roblox until Save.
+    byText(root, ".rb-folder-bar button", "Take folder off sale")!.click();
+    await waitFor(() => byText(root, ".rb-btn-primary", "Save 1 change"));
+
+    // The folder is saved for next time.
+    byText(root, ".rb-folders button", "All items")!.click();
+    await waitFor(() => byText(root, ".rb-name a", "On-sale shirt"));
+    render(null, root);
+    const again = mount().root;
+    await waitFor(() => byText(again, ".rb-folders button", /Christmas set/));
   }, 20000);
 });

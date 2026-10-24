@@ -1017,3 +1017,54 @@ a.rb-btn {
 .rb-remember-offer .rb-btn {
   flex-shrink: 0;
 }
+
+/* ---------- Folders ---------- */
+.rb-folders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--rb-border);
+}
+.rb-folders-label {
+  margin-right: 4px;
+  color: var(--rb-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.rb-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--rb-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rb-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rb-folder:hover {
+  background: var(--rb-hover);
+}
+.rb-folder.is-active {
+  border-color: transparent;
+  background: var(--rb-primary-soft);
+  color: var(--rb-primary-hover);
+  font-weight: 600;
+}
+.rb-folder-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--rb-border);
+  background: var(--rb-primary-soft);
+}
+.rb-folder-tag {
+  color: var(--rb-muted);
+  font-size: 12px;
+}

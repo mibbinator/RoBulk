@@ -4,11 +4,13 @@ import type { SellableItem } from "../api/types";
 import { CATEGORIES, categoryFor, type CategoryId } from "../core/categories";
 import { csvToPatches, toCsv } from "../core/csv";
 import { applyAction, effective, pendingChanges, setEdit, setEdits, type BulkAction, type Edit, type PendingChange } from "../core/edits";
+import { addToFolder, createFolder, deleteFolder, folderNamesByItem, readFolders, removeFromFolder, renameFolder, writeFolders, type Folder } from "../core/folders";
 import { describeChanges, snapshotOf, type LogEntry } from "../core/history";
 import { runPaced } from "../core/queue";
 import { saveChange } from "../core/save";
 import { robux } from "./charts";
 import { Menu, Segmented, downloadText, fileSafe } from "./components";
+import { FolderNameDialog } from "./FolderDialog";
 import { ImportResultDialog, ItemStatsDialog, LuaDialog, PriceRuleDialog, ScheduleDialog, TextDialog } from "./ItemDialogs";
 import { creatorKey, rangeLabel, useWorkspace } from "./workspace";
 
@@ -22,6 +24,8 @@ type DialogState =
   | { kind: "lua" }
   | { kind: "import"; staged: number; warnings: string[] }
   | { kind: "stats"; item: SellableItem }
+  | { kind: "newFolder"; itemKeys: string[] }
+  | { kind: "renameFolder"; folder: Folder }
   | null;
 
 interface SaveProgress {
@@ -95,8 +99,31 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const abortRef = useRef<AbortController | null>(null);
   const lastClicked = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  /** The creator's folders, and the one being looked at (null: every item). */
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
 
   const saving = progress?.running ?? false;
+  const ownerKey = creator ? creatorKey(creator) : null;
+
+  useEffect(() => {
+    setOpenFolderId(null);
+    setFolders([]);
+    if (!ownerKey) return;
+    let current = true;
+    readFolders(ws.storage, ownerKey).then((list) => current && setFolders(list));
+    return () => {
+      current = false;
+    };
+  }, [ownerKey]);
+
+  const saveFolders = (next: Folder[]) => {
+    setFolders(next);
+    if (ownerKey) writeFolders(ws.storage, ownerKey, next);
+  };
+  const openFolder = folders.find((f) => f.id === openFolderId) ?? null;
+  const inOpenFolder = useMemo(() => (openFolder ? new Set(openFolder.itemKeys) : null), [openFolder]);
+  const folderNames = useMemo(() => folderNamesByItem(folders), [folders]);
 
   // Look up the creator share for every price on screen, including staged ones.
   useEffect(() => {
@@ -115,6 +142,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
     const list = items.filter((item) => {
       const eff = effective(item, edits.get(item.key));
       if (q && !eff.name.toLowerCase().includes(q) && !String(item.id).includes(q)) return false;
+      if (inOpenFolder && !inOpenFolder.has(item.key)) return false;
       // Filter on the saved status, so staged items stay in view for review until saved.
       return filter === "all" || (filter === "onSale" ? item.onSale : !item.onSale);
     });
@@ -129,7 +157,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
     };
     const sorter = sorters[sort];
     return sorter ? [...list].sort(sorter) : list;
-  }, [items, edits, filter, query, sort, perItemSales]);
+  }, [items, edits, filter, query, sort, perItemSales, inOpenFolder]);
 
   const groups = useMemo(
     () => CATEGORIES.map((cat) => ({ ...cat, items: visible.filter((i) => categoryFor(i) === cat.id) })).filter((g) => g.items.length > 0),
@@ -143,6 +171,9 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const saveable = changes.filter((c) => !c.problem);
   const selectedPassesOrProducts = selectedItems.filter((i) => i.kind !== "avatar");
   const selectedAvatar = selectedItems.filter((i) => i.kind === "avatar");
+  /** Everything in the open folder that's listed here, whatever the search or filter. */
+  const folderItems = useMemo(() => (inOpenFolder ? items.filter((i) => inOpenFolder.has(i.key)) : []), [items, inOpenFolder]);
+  const selectedInFolder = inOpenFolder ? selectedItems.filter((i) => inOpenFolder.has(i.key)) : [];
 
   // Selection
   const toggleRow = (item: SellableItem, shiftKey: boolean) => {
@@ -171,6 +202,34 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const editPrice = (item: SellableItem, raw: string) => {
     const trimmed = raw.trim();
     setWsEdits(setEdit(edits, item, { price: trimmed === "" ? (item.price ?? undefined) : Number(trimmed) }));
+  };
+
+  // Folders
+  const itemCount = (n: number) => `${n} item${n === 1 ? "" : "s"}`;
+  const stageFolder = (onSale: boolean) => {
+    if (!openFolder) return;
+    const changing = folderItems.filter((i) => effective(i, edits.get(i.key)).onSale !== onSale).length;
+    setWsEdits(applyAction(edits, folderItems, { kind: onSale ? "putOnSale" : "takeOffSale" }));
+    const state = onSale ? "on sale" : "off sale";
+    flash(
+      changing === 0
+        ? `Everything in "${openFolder.name}" is already ${state}.`
+        : `${itemCount(changing)} in "${openFolder.name}" set to go ${state}${changing < folderItems.length ? ` (${folderItems.length - changing} already were)` : ""}. Press Save to apply.`,
+    );
+  };
+  const addSelectedTo = (folder: Folder) => {
+    saveFolders(addToFolder(folders, folder.id, [...selected]));
+    flash(`Added ${itemCount(selected.size)} to "${folder.name}".`);
+  };
+  const removeSelectedFromFolder = () => {
+    if (!openFolder) return;
+    saveFolders(removeFromFolder(folders, openFolder.id, selectedInFolder.map((i) => i.key)));
+    setMany(selectedInFolder, false);
+  };
+  const removeFolder = (folder: Folder) => {
+    if (!confirm(`Delete the folder "${folder.name}"? Its items stay as they are; only the folder goes.`)) return;
+    saveFolders(deleteFolder(folders, folder.id));
+    if (openFolderId === folder.id) setOpenFolderId(null);
   };
 
   // Import / export
@@ -327,11 +386,63 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
 
       {ws.unpublished.length > 0 && ws.universeId == null && <UnpublishedWarning items={ws.unpublished} />}
 
+      {creator && items.length > 0 && (
+        <div class="rb-folders" role="group" aria-label="Folders">
+          <span class="rb-folders-label">Folders</span>
+          <button class={`rb-folder ${openFolder ? "" : "is-active"}`} onClick={() => setOpenFolderId(null)}>
+            All items
+          </button>
+          {folders.map((f) => (
+            <button key={f.id} class={`rb-folder ${openFolderId === f.id ? "is-active" : ""}`} onClick={() => setOpenFolderId(f.id)}>
+              📁 {f.name}
+              <span class="rb-count">{items.filter((i) => f.itemKeys.includes(i.key)).length}</span>
+            </button>
+          ))}
+          <button class="rb-link-btn" disabled={saving} onClick={() => setDialog({ kind: "newFolder", itemKeys: [...selected] })}>
+            + New folder{selected.size > 0 ? ` with ${itemCount(selected.size)}` : ""}
+          </button>
+        </div>
+      )}
+      {openFolder && (
+        <div class="rb-folder-bar">
+          <span>
+            <strong>{openFolder.name}</strong>: {itemCount(folderItems.length)}
+            {openFolder.itemKeys.length > folderItems.length && (
+              <span class="rb-muted"> ({openFolder.itemKeys.length - folderItems.length} more not listed here)</span>
+            )}
+          </span>
+          <div class="rb-spacer" />
+          <button class="rb-btn" disabled={saving || folderItems.length === 0} onClick={() => stageFolder(true)}>
+            Put folder on sale
+          </button>
+          <button class="rb-btn" disabled={saving || folderItems.length === 0} onClick={() => stageFolder(false)}>
+            Take folder off sale
+          </button>
+          <Menu
+            label="Folder"
+            align="right"
+            items={[
+              { label: "Select everything in it", onSelect: () => setMany(folderItems, true), disabled: folderItems.length === 0 },
+              { label: `Remove selected from folder (${selectedInFolder.length})`, onSelect: removeSelectedFromFolder, disabled: selectedInFolder.length === 0 },
+              { label: "", onSelect: () => {}, divider: true },
+              { label: "Rename…", onSelect: () => setDialog({ kind: "renameFolder", folder: openFolder }) },
+              { label: "Delete folder", onSelect: () => removeFolder(openFolder) },
+            ]}
+          />
+        </div>
+      )}
+
       <main class="rb-body">
         {loading && items.length === 0 && <div class="rb-empty">Loading items…</div>}
         {!loading && error && <div class="rb-empty rb-error">{error}</div>}
         {!loading && !error && items.length === 0 && <div class="rb-empty">No items found for this creator.</div>}
-        {!loading && !error && items.length > 0 && groups.length === 0 && <div class="rb-empty">No items match your search or filter.</div>}
+        {!loading && !error && items.length > 0 && groups.length === 0 && (
+          <div class="rb-empty">
+            {openFolder && folderItems.length === 0
+              ? `"${openFolder.name}" is empty here. Select items under All items, then use Add to folder at the bottom.`
+              : "No items match your search or filter."}
+          </div>
+        )}
 
         {groups.map((group) => {
           const selectedCount = group.items.filter((i) => selected.has(i.key)).length;
@@ -378,6 +489,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
                     disabled={saving}
                     sales={perItemSales ? (perItemSales.get(item.key) ?? { robux: 0, sales: 0 }) : undefined}
                     perSale={ws.earningsPerSale(item, effective(item, edits.get(item.key)).price)}
+                    folders={folderNames.get(item.key)}
                     onToggle={(shift) => toggleRow(item, shift)}
                     onPrice={(raw) => editPrice(item, raw)}
                     onManaged={(enabled) => setWsEdits(setEdit(edits, item, { managedPricing: enabled }))}
@@ -429,6 +541,16 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
           <button class="rb-btn" disabled={saving || selected.size === 0} onClick={() => bulk({ kind: "takeOffSale" })}>
             Take off sale
           </button>
+          <Menu
+            label="Add to folder"
+            up
+            disabled={saving || selected.size === 0}
+            items={[
+              ...folders.map((f) => ({ label: f.name, onSelect: () => addSelectedTo(f) })),
+              ...(folders.length > 0 ? [{ label: "", onSelect: () => {}, divider: true }] : []),
+              { label: "New folder…", onSelect: () => setDialog({ kind: "newFolder", itemKeys: [...selected] }) },
+            ]}
+          />
           <Menu
             label="More"
             up
@@ -501,6 +623,32 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
       {dialog?.kind === "lua" && <LuaDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === "import" && <ImportResultDialog staged={dialog.staged} warnings={dialog.warnings} onClose={() => setDialog(null)} />}
       {dialog?.kind === "stats" && <ItemStatsDialog item={dialog.item} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "newFolder" && (
+        <FolderNameDialog
+          title="New folder"
+          action="Create folder"
+          note={
+            dialog.itemKeys.length > 0
+              ? `The ${itemCount(dialog.itemKeys.length)} you selected go in it.`
+              : "Add items to it by selecting them and using Add to folder at the bottom."
+          }
+          onApply={(name) => {
+            const { folders: next, folder } = createFolder(folders, name, dialog.itemKeys);
+            saveFolders(next);
+            setOpenFolderId(folder.id);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "renameFolder" && (
+        <FolderNameDialog
+          title="Rename folder"
+          action="Rename"
+          initial={dialog.folder.name}
+          onApply={(name) => saveFolders(renameFolder(folders, dialog.folder.id, name))}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </>
   );
 }
@@ -515,6 +663,8 @@ interface RowProps {
   disabled: boolean;
   sales: { robux: number; sales: number } | undefined;
   perSale: number | null;
+  /** The folders it's in. */
+  folders: string[] | undefined;
   onToggle: (shiftKey: boolean) => void;
   onPrice: (raw: string) => void;
   onManaged: (enabled: boolean) => void;
@@ -523,7 +673,7 @@ interface RowProps {
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
-function Row({ item, edit, thumb, selected, status, problem, disabled, sales, perSale, onToggle, onPrice, onManaged, onStats }: RowProps) {
+function Row({ item, edit, thumb, selected, status, problem, disabled, sales, perSale, folders, onToggle, onPrice, onManaged, onStats }: RowProps) {
   const eff = effective(item, edit);
   const saleChanged = edit?.onSale !== undefined;
   const priceChanged = edit?.price !== undefined;
@@ -561,6 +711,11 @@ function Row({ item, edit, thumb, selected, status, problem, disabled, sales, pe
               Managed pricing: {eff.managedPricing ? "On" : "Off"}
             </button>
           )}
+          {folders?.map((name) => (
+            <span key={name} class="rb-folder-tag">
+              📁 {name}
+            </span>
+          ))}
           {edit?.regionalPricing !== undefined && <span class="rb-chip is-changed">Regional pricing → {edit.regionalPricing ? "On" : "Off"}</span>}
           {edit?.description !== undefined && <span class="rb-chip is-changed">Description edited</span>}
           {edit?.schedule && (
