@@ -162,9 +162,10 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
   /** The loaded sales that belong to what's on screen: the experience's passes and products, or the store's avatar items. */
   const scopedSales = useMemo((): SaleTransaction[] => {
     const all = loaded?.entry?.sales ?? [];
-    if (universeId == null) return all.filter((t) => t.item.type !== "GamePass" && t.item.type !== "DeveloperProduct");
+    if (universeId == null) return all.filter((t) => t.item.type !== "GamePass" && t.item.type !== "DeveloperProduct" && t.item.type !== "PrivateServer");
+    // By the experience Roblox says a pass or product belongs to, or else by the experience's own passes and products.
     const keys = new Set(experienceItems.map((i) => i.key));
-    return all.filter((t) => keys.has(transactionItemKey(t)));
+    return all.filter((t) => t.item.universeId === universeId || keys.has(transactionItemKey(t)));
   }, [loaded?.entry, universeId, experienceItems]);
 
   // Whatever RoBulk loads or saves is what the off-sale alarm compares against.

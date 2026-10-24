@@ -11,7 +11,8 @@ export interface SaleTransaction {
   /** Robux credited to the creator for this sale (already after Roblox's cut). */
   robux: number;
   buyer: { id: number; name: string };
-  item: { id: number; name: string; type: string };
+  /** `universeId` is the experience a game pass or developer product belongs to, when Roblox says. */
+  item: { id: number; name: string; type: string; universeId?: number };
 }
 
 /** How sales are grouped on the charts: per day, or per week for long histories. */

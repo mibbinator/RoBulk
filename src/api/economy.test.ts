@@ -13,6 +13,9 @@ const raw = (created: string, amount = 7) => ({
   currency: { amount, type: "Robux" },
 });
 
+// These tests page through the economy service; "eco:" starts there from the newest sale.
+const economy = { fromCursor: "eco:" };
+
 const group: Creator = { type: "Group", id: 5, name: "Store", access: { avatarItems: true, experiences: true, earnings: true } };
 
 describe("economy", () => {
@@ -35,14 +38,14 @@ describe("economy", () => {
     ];
     const fetchImpl = vi.fn(async (_url: string) => new Response(JSON.stringify(pages.shift())));
 
-    const { transactions, truncated, resumeCursor } = await listSales(createClient(fetchImpl), group, new Date("2026-10-15T00:00:00Z"));
+    const { transactions, truncated, resumeCursor } = await listSales(createClient(fetchImpl), group, new Date("2026-10-15T00:00:00Z"), economy);
 
     expect(transactions.map((t) => t.created.slice(0, 10))).toEqual(["2026-10-22", "2026-10-21", "2026-10-20"]);
     expect(truncated).toBe(false);
     expect(String(fetchImpl.mock.calls[0][0])).toBe("https://economy.roblox.com/v2/groups/5/transactions?transactionType=Sale&limit=100");
     expect(String(fetchImpl.mock.calls[1][0])).toContain("cursor=p2");
     // Going further back later starts on the page that crossed the start date.
-    expect(resumeCursor).toBe("p2");
+    expect(resumeCursor).toBe("eco:p2");
   });
 
   it("carries on from a cursor, and says where to carry on from when cut short", async () => {
@@ -52,7 +55,7 @@ describe("economy", () => {
 
     expect(String(fetchImpl.mock.calls[0][0])).toContain("cursor=p5");
     expect(res.truncated).toBe(true);
-    expect(res.resumeCursor).toBe("p6");
+    expect(res.resumeCursor).toBe("eco:p6"); // an untagged cursor is from before, so an economy one
   });
 
   it("fetches pages back to back until Roblox rate-limits, then paces itself", async () => {
@@ -72,7 +75,7 @@ describe("economy", () => {
         return responses.shift()!();
       });
 
-      const result = listSales(createClient(fetchImpl), group, null);
+      const result = listSales(createClient(fetchImpl), group, null, economy);
       await vi.runAllTimersAsync();
       const { transactions, reachedEnd } = await result;
 
@@ -92,7 +95,7 @@ describe("economy", () => {
       if (calls === 1) return new Response(JSON.stringify({ errors: [{ message: "Service unavailable" }] }), { status: 503 });
       return new Response(JSON.stringify({ data: [raw("2026-10-22T00:00:00Z")], nextPageCursor: null }));
     });
-    const res = await listSales(createClient(fetchImpl), group, null);
+    const res = await listSales(createClient(fetchImpl), group, null, economy);
     expect(calls).toBe(2);
     expect(res.transactions).toHaveLength(1);
     expect(res.reachedEnd).toBe(true);
@@ -106,7 +109,7 @@ describe("economy", () => {
       return new Response("{}", { status: 429, headers: { "retry-after": "60" } });
     });
 
-    const { transactions, truncated } = await listSales(createClient(fetchImpl), group, null, { signal: controller.signal });
+    const { transactions, truncated } = await listSales(createClient(fetchImpl), group, null, { ...economy, signal: controller.signal });
 
     expect(transactions).toHaveLength(1);
     expect(truncated).toBe(true);

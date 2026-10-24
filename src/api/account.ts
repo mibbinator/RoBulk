@@ -115,3 +115,20 @@ export async function payoutPercentage(client: RobloxClient, groupId: number, us
     return null;
   }
 }
+
+/**
+ * Usernames for user ids, up to 100 at a time (fewer if Roblox leaves some out).
+ *   POST users.roblox.com/v1/users
+ */
+export async function userNames(client: RobloxClient, ids: number[]): Promise<Map<number, string>> {
+  const names = new Map<number, string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const res = await client.json<{ data: { id: number; name: string }[] }>("https://users.roblox.com/v1/users", {
+      method: "POST",
+      body: JSON.stringify({ userIds: ids.slice(i, i + 100), excludeBannedUsers: false }),
+      headers: { "Content-Type": "application/json" },
+    });
+    for (const u of res.data) names.set(u.id, u.name);
+  }
+  return names;
+}

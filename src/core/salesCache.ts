@@ -124,8 +124,8 @@ export interface StoredSales {
   coveredFrom: string | null;
   updatedAt: string;
   olderCursor?: string | null;
-  /** [id, name, type] */
-  items: [number, string, string][];
+  /** [id, name, type, experience's universe id if known] */
+  items: [number, string, string, number?][];
   /** [id, name] */
   buyers: [number, string][];
   /** [sale id, created, robux, item index, buyer index, pending (1) or not (0)] */
@@ -153,7 +153,7 @@ export function packSales(entry: SalesCacheEntry, limit: number | null = DEFAULT
     s.id,
     s.created,
     s.robux,
-    indexOf(itemIndex, items, `${s.item.type}:${s.item.id}:${s.item.name}`, [s.item.id, s.item.name, s.item.type]),
+    indexOf(itemIndex, items, `${s.item.type}:${s.item.id}:${s.item.name}:${s.item.universeId ?? ""}`, s.item.universeId === undefined ? [s.item.id, s.item.name, s.item.type] : [s.item.id, s.item.name, s.item.type, s.item.universeId]),
     indexOf(buyerIndex, buyers, `${s.buyer.id}:${s.buyer.name}`, [s.buyer.id, s.buyer.name]),
     s.isPending ? 1 : 0,
   ]);
@@ -162,7 +162,7 @@ export function packSales(entry: SalesCacheEntry, limit: number | null = DEFAULT
 
 export function unpackSales(stored: StoredSales): SalesCacheEntry {
   // Sales of the same item share one object, which also keeps memory down.
-  const items = stored.items.map(([id, name, type]) => ({ id, name, type }));
+  const items = stored.items.map(([id, name, type, universeId]) => (universeId === undefined ? { id, name, type } : { id, name, type, universeId }));
   const buyers = stored.buyers.map(([id, name]) => ({ id, name }));
   return {
     coveredFrom: stored.coveredFrom,

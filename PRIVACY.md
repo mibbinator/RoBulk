@@ -13,7 +13,7 @@ RoBulk runs on create.roblox.com and www.roblox.com. On create.roblox.com it rea
 - the names and review status of classic clothing you uploaded, to warn about items that aren't published yet
 - public stats of your experiences (visits, players, favorites, likes)
 - your recurring payout percentage in groups you don't own, for the Account Overview
-- sale transactions and Robux balance, if you have permission to see them
+- sale transactions and Robux balance, if you have permission to see them, and the usernames of the buyers the earnings report lists
 - which group you last selected in the Creator Dashboard (read from the page itself), so RoBulk can open on the same one
 
 On www.roblox.com it only checks the public catalog for the accounts and groups you've opened in RoBulk, to warn you if their items went off sale.

@@ -1,4 +1,4 @@
-import { getBalance, listSales, type TransactionResult } from "../api/economy";
+import { getBalance, listSales, resetSalesSources, type TransactionResult } from "../api/economy";
 import { RobloxApiError, type RobloxClient } from "../api/http";
 import type { Creator } from "../api/types";
 import { SalesCache, cacheCovers, mergeFetched, mergeOlder, planFetch, type SalesCacheEntry } from "../core/salesCache";
@@ -352,4 +352,5 @@ export function onPageLoadingChange(listener: () => void): () => void {
 export function forgetSalesLoaders() {
   for (const l of loaders.values()) l.stop();
   loaders.clear();
+  resetSalesSources();
 }

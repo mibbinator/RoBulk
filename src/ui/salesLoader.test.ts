@@ -33,6 +33,8 @@ function fakeRoblox() {
   const waiting: (() => void)[] = [];
   const fetchImpl = vi.fn(async (url: string) => {
     if (url.includes("/currency")) return json({ robux: 50 });
+    // These pages are in the economy service's format; the records service is refused, so loading falls back to it.
+    if (url.includes("transaction-records-api")) return new Response(JSON.stringify({ errors: [{ message: "Not found" }] }), { status: 404 });
     const cursor = new URL(url).searchParams.get("cursor") ?? "";
     requested.push((url.includes("/groups/") ? "group " : "") + cursor);
     await new Promise<void>((r) => waiting.push(r));
@@ -72,7 +74,7 @@ describe("SalesLoader", () => {
     // Only the first page is in, and it's already saved, with where to carry on from.
     const saved = await cache.read("User:1");
     expect(saved!.sales.map((s) => s.id)).toEqual(["a", "b"]);
-    expect(saved!.olderCursor).toBe("p2");
+    expect(saved!.olderCursor).toBe("eco:p2");
     expect(loader.state.loading).toBe(true);
 
     await release();

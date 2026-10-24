@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { CategoryId } from "../core/categories";
 import { change, type DayPoint, type EarningsSummary } from "../core/earnings";
+import { userNames } from "../api/account";
 import { markSeen, readSeen, salesSince } from "../core/seenSales";
 import { BestTimes } from "./BestTimes";
 import { AreaChart, BarChart, ChartCard, DoughnutChart, StatTile, compact, robux, type Slice } from "./charts";
@@ -33,7 +34,18 @@ function reportCsv(points: DayPoint[], weekly: boolean, s: EarningsSummary): str
 }
 
 export function EarningsTab() {
-  const { creator, sales, loadSales, stopSales, storage, salesEntry, scopedSales, settings, universeId, experience, gameStats } = useWorkspace();
+  const { client, creator, sales, loadSales, stopSales, storage, salesEntry, scopedSales, settings, universeId, experience, gameStats } = useWorkspace();
+
+  // Roblox's transaction records give buyers' ids but not their names; look up the ones shown.
+  const [buyerNames, setBuyerNames] = useState<Map<string, string>>(new Map());
+  const unnamed = (sales.current?.topBuyers ?? []).filter((b) => !b.label && !buyerNames.has(b.key) && Number(b.key) > 0).map((b) => Number(b.key));
+  useEffect(() => {
+    if (unnamed.length === 0) return;
+    userNames(client, unnamed)
+      .then((found) => setBuyerNames((prev) => new Map([...prev, ...[...found].map(([id, name]) => [String(id), name] as [string, string])])))
+      .catch(() => {});
+  }, [unnamed.join(",")]);
+  const buyerName = (b: { key: string; label: string }) => b.label || buyerNames.get(b.key) || `User ${b.key}`;
   /** When this creator's report was last opened before now, for the "since you last looked" line. */
   const [lastLooked, setLastLooked] = useState<{ key: string; at: string | null } | null>(null);
 
@@ -234,7 +246,7 @@ export function EarningsTab() {
                           <tr key={b.key}>
                             <td>
                               <a href={`https://www.roblox.com/users/${b.key}/profile`} target="_blank" rel="noreferrer">
-                                {b.label}
+                                {buyerName(b)}
                               </a>
                             </td>
                             <td class="num">{b.sales}</td>

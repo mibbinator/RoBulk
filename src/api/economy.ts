@@ -3,6 +3,8 @@ import { RobloxApiError, type RobloxClient } from "./http";
 import type { Creator } from "./types";
 
 const ECONOMY = "https://economy.roblox.com";
+/** The transaction records service the Creator Dashboard's Transactions page uses. */
+const RECORDS = "https://apis.roblox.com/transaction-records-api";
 const ITEMCONFIG = "https://itemconfiguration.roblox.com";
 
 interface RawTransaction {
@@ -18,6 +20,65 @@ interface RawTransaction {
 interface TransactionPage {
   data: RawTransaction[];
   nextPageCursor: string | null;
+}
+
+/** A sale as the transaction records service lists it. */
+export interface RawRecord {
+  counterParty?: { type: string; id: string | number } | null;
+  ledgerReason?: string;
+  /** "Active" while Roblox holds the Robux, "Released"/"Settled" once paid, "Cancelled" if refunded. */
+  holdStatus?: string;
+  amount?: string | number;
+  details?: {
+    productId?: number | string;
+    productName?: string;
+    /** 2/3 avatar item, 4 developer product, 5 private server, 6 game pass, 7 bundle, 8-10 collectible. */
+    productTypeId?: number | string;
+    productTargetId?: number | string;
+    productUniverseId?: number | string;
+    assetId?: number | string;
+    collectibleItemTargetId?: number | string;
+  } | null;
+  createdTime: string;
+}
+
+interface RecordsPage {
+  transactions?: RawRecord[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+}
+
+const num = (v: unknown): number | undefined => {
+  const n = typeof v === "string" && v !== "" ? Number(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/** Reads a sale from the transaction records service; null for anything that isn't a paid-for sale. */
+export function toSaleFromRecord(raw: RawRecord): SaleTransaction | null {
+  const d = raw.details;
+  const robux = num(raw.amount);
+  const status = raw.holdStatus?.toLowerCase();
+  if (!d || robux === undefined || robux <= 0 || status === "cancelled" || status === "canceled") return null;
+  const typeId = num(d.productTypeId);
+  const target = num(d.productTargetId);
+  const universeId = num(d.productUniverseId);
+  let item: SaleTransaction["item"];
+  if (typeId === 6) item = { id: target ?? num(d.productId) ?? 0, name: d.productName ?? "Game pass", type: "GamePass", universeId };
+  else if (typeId === 4) item = { id: target ?? num(d.productId) ?? 0, name: d.productName ?? "Developer product", type: "DeveloperProduct", universeId };
+  else if (typeId === 5) item = { id: universeId ?? num(d.productId) ?? 0, name: d.productName ?? "Private server", type: "PrivateServer", universeId };
+  else if (typeId === 7) item = { id: target ?? num(d.productId) ?? 0, name: d.productName ?? "Bundle", type: "Bundle" };
+  else item = { id: num(d.assetId) ?? num(d.collectibleItemTargetId) ?? target ?? 0, name: d.productName ?? "Item", type: "Asset" };
+  const buyerId = num(raw.counterParty?.id) ?? 0;
+  return {
+    // The service doesn't give sales an id; this is stable for the same sale.
+    id: `rec:${raw.createdTime}:${buyerId}:${d.productId ?? item.id}`,
+    created: raw.createdTime,
+    isPending: status !== "released" && status !== "settled",
+    robux,
+    // Names aren't included; the report looks them up for the buyers it shows.
+    buyer: { id: buyerId, name: "" },
+    item,
+  };
 }
 
 export function toSaleTransaction(raw: RawTransaction): SaleTransaction | null {
@@ -90,11 +151,79 @@ export interface TransactionResult {
   resumeCursor: string | null;
 }
 
+/** One page of sales from one of Roblox's two transaction services, newest first. */
+interface SalesSource {
+  name: "rec" | "eco";
+  page(cursor: string, opts: { onRateLimited: () => void; signal?: AbortSignal }): Promise<{ rows: { created: string; sale: SaleTransaction | null }[]; next: string | null }>;
+}
+
+/** The records service the dashboard uses. Its cursors mark a place in the list, so they still work on a later visit. */
+function recordsSource(client: RobloxClient, creator: Creator): SalesSource {
+  const base = `${RECORDS}/v2/${creator.type === "Group" ? "groups" : "users"}/${creator.id}/transactions`;
+  let withTimes = false;
+  return {
+    name: "rec",
+    async page(cursor, opts) {
+      const params = new URLSearchParams({ limit: "100", ledgerReason: "SaleOfGood" });
+      if (withTimes) {
+        params.set("startTimeMillis", "0");
+        params.set("endTimeMillis", String(Date.now()));
+      }
+      if (cursor) params.set("cursor", cursor);
+      let res: RecordsPage;
+      try {
+        res = await getWithRetry<RecordsPage>(client, `${base}?${params}`, opts);
+      } catch (e) {
+        // Some accounts may need a time range; ask again with one that covers everything.
+        if (!withTimes && e instanceof RobloxApiError && e.status === 400 && /missing request parameter/i.test(e.message)) {
+          withTimes = true;
+          return this.page(cursor, opts);
+        }
+        throw e;
+      }
+      if (!Array.isArray(res.transactions)) throw new RobloxApiError("Unexpected answer from the transaction records service", 502);
+      return {
+        rows: res.transactions.map((r) => ({ created: r.createdTime, sale: toSaleFromRecord(r) })),
+        next: res.hasMore === false ? null : (res.nextCursor ?? null),
+      };
+    },
+  };
+}
+
+/** The older economy service. Its cursors don't last between visits. */
+function economySource(client: RobloxClient, creator: Creator): SalesSource {
+  const base = `${ECONOMY}/v2/${creator.type === "Group" ? "groups" : "users"}/${creator.id}/transactions`;
+  return {
+    name: "eco",
+    async page(cursor, opts) {
+      const params = new URLSearchParams({ transactionType: "Sale", limit: "100" });
+      if (cursor) params.set("cursor", cursor);
+      const res = await getWithRetry<TransactionPage>(client, `${base}?${params}`, opts);
+      return { rows: res.data.map((r) => ({ created: r.created, sale: toSaleTransaction(r) })), next: res.nextPageCursor };
+    },
+  };
+}
+
+/** Creators whose sales the records service wouldn't give this page visit; the economy service is used for them instead. */
+const recordsRefused = new Set<string>();
+/** Forgets which creators fell back (for tests). */
+export function resetSalesSources() {
+  recordsRefused.clear();
+}
+
+/** The records service refused (not a passing problem): worth trying the economy service instead. */
+const refused = (e: unknown) => e instanceof RobloxApiError && [400, 401, 403, 404, 502].includes(e.status);
+
 /**
  * Sale transactions from newest back to `since` (or all of them when `since`
  * is null). Roblox only pages through history, newest first, so a page cap
  * keeps very busy stores from running for ages. `fromCursor` starts further
  * back instead, where an earlier load's `resumeCursor` said to.
+ *
+ * Sales come from the transaction records service the dashboard uses, whose
+ * cursors still work on a later visit; if it won't give them, from the older
+ * economy service. Cursors are tagged with the service they came from
+ * ("rec:…" or "eco:…"; untagged ones are from before, and so economy ones).
  *
  * Pages are fetched back to back. If Roblox rate-limits us, we wait as it
  * asks, then pause between pages for the rest of the load (longer each time
@@ -124,15 +253,16 @@ export async function listSales(
     signal?: AbortSignal;
   } = {},
 ): Promise<TransactionResult> {
-  const base =
-    creator.type === "Group"
-      ? `${ECONOMY}/v2/groups/${creator.id}/transactions`
-      : `${ECONOMY}/v2/users/${creator.id}/transactions`;
+  const key = `${creator.type}:${creator.id}`;
+  const tagged = /^(rec|eco):/.exec(fromCursor);
+  let source =
+    (tagged ? tagged[1] === "rec" : !fromCursor && !recordsRefused.has(key)) ? recordsSource(client, creator) : economySource(client, creator);
+  let cursor = tagged ? fromCursor.slice(4) : fromCursor;
+
   const transactions: SaleTransaction[] = [];
-  let cursor = fromCursor;
   let pace = 0;
   // "" is the newest page, which is no help as a place to carry on from.
-  const resume = (c: string) => c || null;
+  const resume = (c: string) => (c ? `${source.name}:${c}` : null);
   const onRateLimited = () => (pace = pace ? Math.min(MAX_PACE_MS, pace * 2) : RATE_LIMITED_PACE_MS);
   for (let page = 0; page < maxPages; page++) {
     if (signal?.aborted) break;
@@ -140,30 +270,34 @@ export async function listSales(
       await beforePage();
       if (signal?.aborted) break;
     }
-    const params = new URLSearchParams({ transactionType: "Sale", limit: "100" });
-    if (cursor) params.set("cursor", cursor);
-    let res: TransactionPage;
+    let res: Awaited<ReturnType<SalesSource["page"]>>;
     try {
-      res = await getWithRetry<TransactionPage>(client, `${base}?${params}`, { onRateLimited, signal });
+      res = await source.page(cursor, { onRateLimited, signal });
     } catch (e) {
       if (signal?.aborted) break; // stopped while waiting out a rate limit: keep what's loaded
+      // Starting from the newest sale and the records service won't help: use the economy service.
+      if (source.name === "rec" && page === 0 && !cursor && refused(e)) {
+        recordsRefused.add(key);
+        source = economySource(client, creator);
+        page--;
+        continue;
+      }
       throw e;
     }
     const since = typeof stopAt === "function" ? stopAt() : stopAt;
     let reachedSince = false;
-    for (const raw of res.data) {
-      if (since && new Date(raw.created) < since) {
+    for (const row of res.rows) {
+      if (since && new Date(row.created) < since) {
         reachedSince = true;
         break;
       }
-      const t = toSaleTransaction(raw);
-      if (t) transactions.push(t);
+      if (row.sale) transactions.push(row.sale);
     }
     onProgress?.({ pages: page + 1, sales: transactions.length, oldest: transactions.at(-1)?.created ?? null });
     // This page has the sales just past `since`, so a longer load starts here.
     if (reachedSince) return { transactions, reachedSince, reachedEnd: false, truncated: false, resumeCursor: resume(cursor) };
-    if (!res.nextPageCursor) return { transactions, reachedSince: false, reachedEnd: true, truncated: false, resumeCursor: null };
-    cursor = res.nextPageCursor;
+    if (!res.next) return { transactions, reachedSince: false, reachedEnd: true, truncated: false, resumeCursor: null };
+    cursor = res.next;
     onPage?.({ transactions: [...transactions], reachedSince: false, reachedEnd: false, truncated: true, resumeCursor: resume(cursor) });
     if (pace) await sleep(pace, signal);
   }

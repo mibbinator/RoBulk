@@ -351,4 +351,33 @@ describe("Shell", () => {
     await waitFor(() => byText(root, ".rb-group-toggle", /Game Passes/));
     expect(byText(root, ".rb-group-toggle", /Classic Shirts/)).toBeFalsy();
   }, 20000);
+  it("reads sales from the transaction records service, with buyers' names looked up", async () => {
+    const { fetchImpl } = fakeRoblox();
+    const records = vi.fn(async (input: string, init: RequestInit = {}) => {
+      const url = String(input);
+      if (url.includes("transaction-records-api/v2/users/1/transactions")) {
+        const sale = (days: number, buyer: string) => ({
+          counterParty: { type: "User", id: buyer },
+          ledgerReason: "SaleOfGood",
+          holdStatus: "Settled",
+          amount: "3",
+          details: { productId: 900, productName: "On-sale shirt", productTypeId: 8, assetId: 102 },
+          createdTime: daysAgo(days),
+        });
+        return json({ transactions: [sale(1, "178318428"), sale(2, "178318428")], nextCursor: null, hasMore: false });
+      }
+      if (url.includes("users.roblox.com/v1/users") && init.method === "POST") return json({ data: [{ id: 178318428, name: "NomGreen", displayName: "Green" }] });
+      return fetchImpl(input, init);
+    });
+    vi.stubGlobal("fetch", records);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    render(<Shell onClose={() => {}} initialTab="earnings" />, root);
+
+    const earned = await waitFor(() => byText(root, ".rb-stat", /Earned, last 30 days/));
+    await waitFor(() => earned.querySelector(".rb-stat-value")!.textContent === "R$6");
+    await waitFor(() => byText(root, "td a", "NomGreen"));
+    expect(records.mock.calls.some((c) => String(c[0]).includes("economy.roblox.com/v2/users/1/transactions"))).toBe(false);
+  }, 20000);
 });
