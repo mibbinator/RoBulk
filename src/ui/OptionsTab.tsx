@@ -110,6 +110,11 @@ export function OptionsTab() {
               </button>
             )}
           </div>
+          <Option
+            setting="rememberOverview"
+            label="Remember the account overview"
+            hint="Keeps the last Account Overview report in this browser, so opening it again shows the numbers straight away, marked with when they are from. Running the report again brings them up to date. Turning this off deletes the saved report."
+          />
         </section>
 
         <section class="rb-card">

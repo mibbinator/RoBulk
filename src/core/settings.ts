@@ -10,6 +10,8 @@ export interface Settings {
   rememberSales: boolean;
   /** The most sales kept in the browser per account or group; null for no limit. */
   maxStoredSales: number | null;
+  /** Keep the last account overview report, so it shows straight away next time. */
+  rememberOverview: boolean;
   /** Look up Roblox's share for each price to show "you get R$…". */
   perSaleEarnings: boolean;
   /** Take a snapshot of prices and sale status once a day, for undo. */
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   backgroundSales: true,
   rememberSales: true,
   maxStoredSales: 100_000,
+  rememberOverview: true,
   perSaleEarnings: true,
   dailySnapshots: true,
   offSaleAlarm: true,

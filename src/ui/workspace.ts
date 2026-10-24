@@ -14,6 +14,7 @@ import { setEdits as stageEdits, type Edit } from "../core/edits";
 import { History, chromeStorage, memoryStorage, type StorageLike } from "../core/history";
 import { rememberOnSale } from "../core/offSaleWatch";
 import { extensionOverflowStore } from "../core/overflowStore";
+import { clearOverview } from "../core/overviewCache";
 import { SalesCache, cacheCovers } from "../core/salesCache";
 import { DEFAULT_SETTINGS, readSettings, writeSettings, type Settings } from "../core/settings";
 import { dashboardGroupId } from "./dashboardGroup";
@@ -400,6 +401,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     setSettings(next);
     writeSettings(storage, next);
     if (before.rememberSales && !next.rememberSales) salesCache.clear().catch(() => {});
+    if (before.rememberOverview && !next.rememberOverview) clearOverview(storage);
     if (!before.perSaleEarnings && next.perSaleEarnings) ensureSplits(avatarItems.map((item) => ({ item, price: item.price })));
   };
 

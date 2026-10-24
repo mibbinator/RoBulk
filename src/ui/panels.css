@@ -1004,3 +1004,16 @@ a.rb-btn {
 [data-theme="light"] .rb-dev-notice strong {
   color: #9a7400;
 }
+
+.rb-remember-offer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rb-remember-offer span {
+  flex: 1;
+}
+.rb-remember-offer .rb-btn {
+  flex-shrink: 0;
+}
