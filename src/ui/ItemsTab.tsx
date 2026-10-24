@@ -319,7 +319,7 @@ export function ItemsTab({ onBusy }: { onBusy: (busy: boolean) => void }) {
       {creator?.access.earnings && !sales.current && !sales.loading && (
         <div class="rb-strip">
           <span>See how many of each item sold and what it earned.</span>
-          <button class="rb-link-btn" onClick={() => ws.loadSales(sales.range)}>
+          <button class="rb-link-btn" onClick={() => (sales.range === "all" ? ws.loadAllTime() : ws.loadSales(sales.range))}>
             {sales.range === "all" ? "Load all-time sales" : `Load sales for the ${rangeLabel(sales.range)}`}
           </button>
         </div>

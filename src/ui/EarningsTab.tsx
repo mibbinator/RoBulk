@@ -34,7 +34,7 @@ function reportCsv(points: DayPoint[], weekly: boolean, s: EarningsSummary): str
 }
 
 export function EarningsTab() {
-  const { client, creator, sales, loadSales, stopSales, storage, salesEntry, scopedSales, settings, universeId, experience, gameStats } = useWorkspace();
+  const { client, creator, sales, loadSales, loadAllTime, stopSales, storage, salesEntry, scopedSales, settings, universeId, experience, gameStats } = useWorkspace();
 
   // Roblox's transaction records give buyers' ids but not their names; look up the ones shown.
   const [buyerNames, setBuyerNames] = useState<Map<string, string>>(new Map());
@@ -89,7 +89,7 @@ export function EarningsTab() {
             ["7", "Last 7 days"],
             ["30", "Last 30 days"],
             ["90", "Last 90 days"],
-            ["all", "All time"],
+            ["all", "All time", "is-alltime"],
           ]}
         />
         <div class="rb-spacer" />
@@ -121,6 +121,11 @@ export function EarningsTab() {
       </div>
 
       <main class="rb-body rb-report">
+        {allTime && (
+          <div class="rb-dev-notice" role="note">
+            <strong>Under development.</strong> All time is still under development and may be buggy: totals can be incomplete, and loading a long history can be slow or stop part-way. Your other reports aren't affected.
+          </div>
+        )}
         {sinceLast && lastLooked?.at && (
           <p class="rb-since-last">
             {sinceLast.count === 0
@@ -141,7 +146,19 @@ export function EarningsTab() {
             </span>
           </div>
         )}
-        {sales.truncated && !sales.loading && sales.since && (
+        {allTime && !sales.loading && !sales.complete && (
+          <div class="rb-banner rb-banner-inline rb-alltime-prompt">
+            <span>
+              {s && sales.since ? <>Showing sales from {longDate(sales.since)} on. </> : null}
+              All time needs your whole sales history from Roblox, which can take a while for a busy store. What's loaded is saved, so you can stop and carry on
+              later.
+            </span>
+            <button class="rb-btn rb-btn-alltime" onClick={loadAllTime}>
+              Load all-time data
+            </button>
+          </div>
+        )}
+        {!allTime && sales.truncated && !sales.loading && sales.since && (
           <div class="rb-banner rb-banner-inline">
             Showing sales from {longDate(sales.since)} on; loading stopped before {allTime ? "your first sale" : "the start of this range"}.{" "}
             <button class="rb-link-btn" onClick={() => loadSales(sales.range, undefined, { force: true })}>

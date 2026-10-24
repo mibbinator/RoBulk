@@ -159,6 +159,19 @@ export class SalesLoader {
     });
   }
 
+  /** Resolves once sales back to `want` (null = everything) are loaded, or nothing is loading any more. */
+  whenCovers(want: Date | null): Promise<void> {
+    const ready = () => !this.state.loading || (!!this.state.entry && cacheCovers(this.state.entry, want));
+    if (ready()) return Promise.resolve();
+    return new Promise((resolve) => {
+      const unsubscribe = this.subscribe(() => {
+        if (!ready()) return;
+        unsubscribe();
+        resolve();
+      });
+    });
+  }
+
   /** A main load is running (not one giving way to others). */
   get mainLoading(): boolean {
     return !!this.running && !this.running.background && this.state.loading;
@@ -318,11 +331,21 @@ export class SalesLoader {
         this.keep(mergeOlder(base, older, target()));
       } catch (e) {
         if (signal.aborted) return true;
-        // Only when Roblox won't take the saved place to carry on from (it may not
-        // last between visits) does loading go back to the newest sale. Anything
-        // else, like a dropped connection, is tried again from the last page.
+        // Anything but Roblox refusing the saved place to carry on from, like a
+        // dropped connection, is tried again from the last page.
         if (!(e instanceof RobloxApiError && e.status === 400)) throw e;
-        if (!(await fromNewest(this.state.entry, want, "Loading your sales history again from the newest sale (Roblox wouldn't let RoBulk carry on from where it stopped)… ", true))) return true;
+        const latest = this.state.entry;
+        if (latest?.coveredFrom && base.olderCursor?.startsWith("eco:")) {
+          // The economy service's cursors are page numbers, so they stop working whenever a new sale
+          // comes in. Page back to where loading got to, skipping what's already loaded, and carry on:
+          // nothing is fetched twice into the report, it just costs those pages again.
+          const keepAgain = (soFar: TransactionResult) => signal.aborted || this.keep(mergeOlder(latest, soFar, target()));
+          const resumed = await fetchSales(target, "Catching up to where it got to (a new sale moved Roblox's place marker)… ", new Date(), latest.sales.length, keepAgain, `eco:S${Date.parse(latest.coveredFrom)}|`);
+          if (signal.aborted) return true;
+          this.keep(mergeOlder(latest, resumed, target()));
+        } else if (!(await fromNewest(this.state.entry, want, "Loading your sales history again from the newest sale (Roblox wouldn't let RoBulk carry on from where it stopped)… ", true))) {
+          return true;
+        }
       }
     }
     const entry = this.state.entry;

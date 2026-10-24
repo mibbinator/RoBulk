@@ -66,6 +66,8 @@ export interface SalesState {
   truncated: boolean;
   /** Still loading back to the start of the range; the report shows what's in so far. */
   partial: boolean;
+  /** The whole history is loaded, back to the first sale. */
+  complete: boolean;
   current: EarningsSummary | null;
   previous: EarningsSummary | null;
   balance: number | null;
@@ -358,6 +360,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     // Loading stopped before the start of the range.
     truncated: !salesLoading && !!loaded?.entry && !cacheCovers(loaded.entry, salesWantedFor(range)),
     partial: salesLoading && !!loaded?.entry && !cacheCovers(loaded.entry, salesWantedFor(range)),
+    complete: !!loaded?.entry && cacheCovers(loaded.entry, null),
     balance: loaded?.balance ?? null,
     loadedAt: loaded?.loadedAt ?? null,
   };
@@ -365,7 +368,9 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
   /**
    * Shows sales for a range, loading whatever isn't loaded yet. Asking again
    * while a load that covers it is running doesn't restart it; `force`
-   * (Refresh, Keep loading) fetches anyway.
+   * (Refresh, Keep loading) fetches anyway. All time only goes all the way
+   * back when asked (`force`, or loadAllTime): it can take a long while, so
+   * just picking it keeps the recent sales up to date and shows what's loaded.
    */
   const loadSales = (newRange: ReportRange, forCreator: Creator | null = creator, { force = false }: { force?: boolean } = {}) => {
     if (!forCreator) return;
@@ -376,8 +381,12 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
       setSalesBlocked("Your role in this group can't view its revenue, so earnings aren't available.");
       return;
     }
-    loaderFor(forCreator).load(salesWantedFor(newRange), { force });
+    const want = newRange === "all" && !force ? salesWantedFor(30) : salesWantedFor(newRange);
+    loaderFor(forCreator).load(want, { force });
   };
+
+  /** Loads the whole sales history (the "Load all-time data" button). */
+  const loadAllTime = () => loadSales("all", creator, { force: true });
 
   /** Stops a long sales load and shows what was loaded so far. */
   const stopSales = () => loader?.stop();
@@ -430,6 +439,7 @@ export function useWorkspaceState(initialUniverseId: number | null = null, openi
     reloadExperience: () => loadExperience(universeId),
     sales,
     loadSales,
+    loadAllTime,
     stopSales,
     earningsPerSale,
     ensureSplits,

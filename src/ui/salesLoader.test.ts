@@ -217,4 +217,22 @@ describe("SalesLoader", () => {
     await release();
     expect(loader.state.entry!.sales).toHaveLength(5);
   });
+  it("catches back up when a new sale stops the economy service's cursor working, instead of starting over", async () => {
+    const { loader, requested, release, failOnce } = setup();
+    loader.load(new Date(Date.now() - 60 * DAY));
+    await release(); // page 1: a and b
+    await release(); // page 2 crosses 60 days; carrying on later starts there
+    expect(loader.state.entry!.olderCursor).toBe("eco:p2");
+
+    // A sale comes in, so Roblox no longer takes that cursor.
+    failOnce.set("p2", 400);
+    loader.load(null);
+    await release(); // p2 refused
+    await release(); // back from the newest page, skipping a and b
+    await release(); // p2 again, now with c and d
+    await release(); // p3: e
+    expect(requested).toEqual(["", "p2", "p2", "", "p2", "p3"]);
+    expect(loader.state.entry!.sales.map((s) => s.id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(loader.state.entry!.coveredFrom).toBeNull();
+  });
 });

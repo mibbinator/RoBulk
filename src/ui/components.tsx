@@ -105,11 +105,22 @@ export function Field({ label, children, hint }: { label: string; children: Comp
   );
 }
 
-export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void; label: string }) {
+/** `options` are [value, label] pairs, with an optional extra class for that option. */
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: readonly (readonly [T, string] | readonly [T, string, string])[];
+  onChange: (v: T) => void;
+  label: string;
+}) {
   return (
     <div class="rb-segmented" role="group" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={v} class={value === v ? "is-active" : ""} onClick={() => onChange(v)}>
+      {options.map(([v, text, extra]) => (
+        <button key={v} class={`${value === v ? "is-active" : ""} ${extra ?? ""}`.trim()} onClick={() => onChange(v)}>
           {text}
         </button>
       ))}

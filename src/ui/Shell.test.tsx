@@ -217,9 +217,18 @@ describe("Shell", () => {
     expect(root.querySelector(".is-refreshing")).toBeNull();
     expect(transactionCalls(calls)).toBe(fetches);
 
+    // Picking All time shows what's loaded and asks before going back through the whole history.
     byText(root, ".rb-segmented button", "All time")!.click();
-    const all = await waitFor(() => byText(root, ".rb-stat", /Earned, all time/));
-    expect(all.querySelector(".rb-stat-value")!.textContent).toBe("R$16"); // every shirt sale, including 40 and 70 days ago
+    await waitFor(() => byText(root, ".rb-dev-notice", /under development/i));
+    const loadAll = await waitFor(() => byText(root, ".rb-alltime-prompt button", "Load all-time data"));
+    expect(transactionCalls(calls)).toBe(fetches);
+    loadAll.click();
+
+    const all = await waitFor(() => {
+      const tile = byText(root, ".rb-stat", /Earned, all time/);
+      return tile?.querySelector(".rb-stat-value")!.textContent === "R$16" && tile; // every shirt sale, including 40 and 70 days ago
+    });
+    await waitFor(() => !root.querySelector(".rb-alltime-prompt")); // the whole history is in
     expect(all.querySelector(".rb-stat-hint")!.textContent).toMatch(/^Since /);
     expect(all.querySelector(".rb-stat-delta")).toBeNull(); // nothing to compare all-time with
 

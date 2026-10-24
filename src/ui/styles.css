@@ -639,3 +639,23 @@
     flex-wrap: wrap;
   }
 }
+
+/* All time: loading the whole sales history is its own, longer job, so it stands out in yellow. */
+.rb-segmented button.is-alltime {
+  color: #f5c518;
+}
+.rb-segmented button.is-alltime.is-active {
+  background: #f5c518;
+  color: #1b1d22;
+}
+.rb-btn.rb-btn-alltime {
+  border-color: #f5c518;
+  background: #f5c518;
+  color: #1b1d22;
+}
+.rb-btn.rb-btn-alltime:hover:not(:disabled) {
+  background: #ffd84d;
+}
+[data-theme="light"] .rb-segmented button.is-alltime:not(.is-active) {
+  color: #9a7400;
+}

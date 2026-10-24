@@ -974,3 +974,33 @@ a.rb-btn {
   text-align: left;
   text-transform: none;
 }
+
+.rb-alltime-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.rb-alltime-prompt span {
+  flex: 1;
+}
+.rb-alltime-prompt .rb-btn {
+  flex-shrink: 0;
+}
+
+/* A yellow notice for features that aren't finished yet. */
+.rb-dev-notice {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid #f5c518;
+  border-radius: var(--rb-radius);
+  background: rgba(245, 197, 24, 0.12);
+  color: var(--rb-text);
+  font-size: 13px;
+}
+.rb-dev-notice strong {
+  color: #f5c518;
+}
+[data-theme="light"] .rb-dev-notice strong {
+  color: #9a7400;
+}
