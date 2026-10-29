@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RoBulk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Bulk pricing, sales and earnings tools for Roblox creators: clothing, UGC, game passes, developer products and badges.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -9,12 +9,22 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage", "unlimitedStorage"],
-  "background": { "service_worker": "background.js" },
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://create.roblox.com/*", "https://www.roblox.com/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://create.roblox.com/*",
+        "https://www.roblox.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]
