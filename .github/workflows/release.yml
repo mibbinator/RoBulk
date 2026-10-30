@@ -32,6 +32,7 @@ jobs:
       - run: npm run package
 
       - name: Check the tag matches the manifest version
+        id: version
         run: |
           version=$(node -p "require('./dist/manifest.json').version")
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -39,13 +40,15 @@ jobs:
             exit 1
           fi
 
+      # Each store publishes even if the other one fails, as long as the build and checks above
+      # passed. The run still shows as failed if either store does.
       - name: Publish to the Chrome Web Store
-        if: env.CWS_EXTENSION_ID != ''
+        if: ${{ !cancelled() && steps.version.outcome == 'success' && env.CWS_EXTENSION_ID != '' }}
         run: node scripts/publish-chrome.mjs "release/robulk-chrome-${GITHUB_REF_NAME#v}.zip"
 
       # Mozilla reviews bundled code against its source, so send that along.
       - name: Publish to Firefox Add-ons
-        if: env.AMO_API_KEY != ''
+        if: ${{ !cancelled() && steps.version.outcome == 'success' && env.AMO_API_KEY != '' }}
         run: >
           git archive --format=zip -o release/source.zip HEAD &&
           npx --yes web-ext@8 sign
@@ -58,6 +61,7 @@ jobs:
           --api-secret "$AMO_API_SECRET"
 
       - name: Attach the zips to a GitHub release
+        if: ${{ !cancelled() && steps.version.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" release/robulk-*.zip --title "$GITHUB_REF_NAME" --generate-notes
