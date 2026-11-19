@@ -65,8 +65,9 @@ Works for clothing and UGC sellers and for game developers, on items owned by yo
 ### 1. Open RoBulk
 
 1. Sign in to Roblox and go to the [Creator Dashboard](https://create.roblox.com/dashboard/creations).
-2. Click **RoBulk** in the dashboard's left sidebar, just below **All tools**. (**Account Overview**, just below it, opens the side-by-side view of all your groups.) If the sidebar is hidden (in a narrow window, for example), a blue **RoBulk** button appears in the bottom-right corner instead. If you don't see either, refresh the page.
-3. Use the two menus at the top right (if you open RoBulk from an experience's page in Creations, it starts on that experience):
+2. Open **Creations**, then **Avatar Items** for your clothing and accessories, or an experience for its game passes and developer products.
+3. Click the blue **RoBulk** button in the bottom-right corner, or **RoBulk** in the dashboard's left sidebar, just below **All tools**. (**Account Overview**, just below it, opens the side-by-side view of all your groups, from any dashboard page.) The button shows on every dashboard page, but RoBulk opens from Creations: anywhere else, clicking it tells you where to go. If you don't see the button, refresh the page.
+4. Use the two menus at the top right (if you open RoBulk from an experience's page in Creations, it starts on that experience):
    - **Creator:** yourself, or one of your groups. Only groups where your role is allowed to manage items or experiences are listed. RoBulk opens on whichever group you have selected in the Creator Dashboard (or on you, if you're viewing your own creations).
    - **Store or experience:** *Clothing & accessories* is your store: avatar items and their sales. Pick an experience to switch to it instead: its game passes and developer products, its stats (visits, players, favorites, rating) and their sales, and the Create & copy and Badges tabs. The two are kept separate, so switching asks before discarding unsaved changes.
 

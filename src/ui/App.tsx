@@ -13,17 +13,14 @@ import { ENTRY_ID, OVERVIEW_ID, setSidebarBadge, setSidebarProgress, watchSideba
 import { AccountOverview } from "./AccountOverview";
 import { robux } from "./charts";
 import { OffSaleBanner, runOffSaleCheck } from "./OffSaleBanner";
+import { CREATIONS_URL, isDashboardPath, opensHere } from "./pages";
 import { onPageLoadingChange, pageLoading, salesLoader } from "./salesLoader";
 import { Shell, type TabId } from "./Shell";
 import { detectTheme, type Theme } from "./theme";
 import { creatorKey, initialCreator, makeStorage, type Opening } from "./workspace";
 
 // The dashboard is a single-page app, so watch for route changes and only
-// offer RoBulk on dashboard pages.
-const isDashboard = () => location.pathname.startsWith("/dashboard");
-
-/** How long to wait for the sidebar before showing the floating button instead. */
-const SIDEBAR_WAIT_MS = 4000;
+// offer RoBulk on dashboard pages (pages.ts says where it opens).
 const DAY = 86_400_000;
 
 /** A chart in RoBulk's blue square, for the Account Overview entry. */
@@ -36,29 +33,39 @@ const overviewIcon =
 type Open = { kind: "robulk"; tab?: TabId; opening?: Opening } | { kind: "overview" } | null;
 
 export function App() {
-  const [onDashboard, setOnDashboard] = useState(isDashboard);
+  const [path, setPath] = useState(location.pathname);
+  const onDashboard = isDashboardPath(path);
   const [open, setOpen] = useState<Open>(null);
+  /** Shown instead of RoBulk when it's opened outside Creations. */
+  const [hint, setHint] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
-  const [inSidebar, setInSidebar] = useState(false);
-  const [waited, setWaited] = useState(false);
   const client = useMemo(() => createClient(), []);
   const storage = useMemo(makeStorage, []);
 
   useEffect(() => {
-    const id = setInterval(() => setOnDashboard(isDashboard()), 1000);
-    const wait = setTimeout(() => setWaited(true), SIDEBAR_WAIT_MS);
-    return () => {
-      clearInterval(id);
-      clearTimeout(wait);
-    };
+    const id = setInterval(() => setPath(location.pathname), 500);
+    return () => clearInterval(id);
   }, []);
+
+  // Once they've gone where RoBulk works, the hint has done its job.
+  useEffect(() => {
+    if (opensHere(path)) setHint(false);
+  }, [path]);
 
   const show = (next: Open) => {
     setTheme(detectTheme());
+    setHint(false);
     setOpen(next);
   };
-  /** Opens RoBulk on the experience whose dashboard page this is, or on the clothing store. */
-  const openRoBulk = () => show({ kind: "robulk", opening: { universeId: universeFromPath(location.pathname) ?? undefined } });
+  /** Opens RoBulk on the experience whose dashboard page this is, or on the clothing store. Outside Creations, says where to go. */
+  const openRoBulk = () => {
+    if (opensHere(location.pathname)) {
+      show({ kind: "robulk", opening: { universeId: universeFromPath(location.pathname) ?? undefined } });
+    } else {
+      setTheme(detectTheme());
+      setHint(true);
+    }
+  };
   const review = (alert: OffSaleAlert) => show({ kind: "robulk", opening: { creatorKey: alert.creatorKey, stageOnSale: alert.items.map((i) => i.id) } });
 
   // RoBulk's entries under "All tools" in the dashboard's sidebar.
@@ -69,7 +76,6 @@ export function App() {
         { id: ENTRY_ID, label: "RoBulk", ariaLabel: "Open RoBulk", iconUrl: logoUrl, onOpen: openRoBulk },
         { id: OVERVIEW_ID, label: "Account Overview", shortLabel: "Overview", ariaLabel: "Open RoBulk's account overview", iconUrl: overviewIcon, onOpen: () => show({ kind: "overview" }) },
       ],
-      setInSidebar,
     );
   }, [onDashboard]);
 
@@ -145,16 +151,39 @@ export function App() {
     };
   }, [onDashboard]);
 
-  // When the sidebar is hidden (small windows) or can't be found, a floating button stands in.
-  const floating = onDashboard && !open && !inSidebar && waited;
+  // The floating button is always there on the dashboard, alongside the sidebar entry.
+  const floating = onDashboard && !open;
 
   return (
     <div class="rb-root" data-theme={theme}>
       {onDashboard && <OffSaleBanner site="dashboard" storage={storage} onReview={review} />}
+      {floating && hint && (
+        <div class="rb-launcher-hint" role="dialog" aria-labelledby="rb-launcher-hint-title">
+          <button class="rb-launcher-hint-close" onClick={() => setHint(false)} aria-label="Close" title="Close">
+            ×
+          </button>
+          <strong id="rb-launcher-hint-title">RoBulk opens from Creations</strong>
+          <p>
+            Go to <b>Creations</b>, then open <b>Avatar Items</b> for clothing and accessories, or open an experience for its game passes and
+            developer products. Click RoBulk there to start bulk editing.
+          </p>
+          <div class="rb-launcher-hint-actions">
+            <button class="rb-btn rb-btn-ghost" onClick={() => setHint(false)}>
+              Not now
+            </button>
+            <a class="rb-btn rb-btn-primary" href={CREATIONS_URL}>
+              Go to Creations
+            </a>
+          </div>
+        </div>
+      )}
       {floating && (
-        <button class="rb-launcher" onClick={openRoBulk} title="Open RoBulk">
-          <img src={logoUrl} alt="" width={20} height={20} />
-          RoBulk
+        <button class="rb-launcher" onClick={openRoBulk} title="Open RoBulk" aria-label="Open RoBulk">
+          <img src={logoUrl} alt="" width={28} height={28} />
+          <span class="rb-launcher-text">
+            <span class="rb-launcher-name">RoBulk</span>
+            <span class="rb-launcher-sub">Bulk edit</span>
+          </span>
         </button>
       )}
       {open?.kind === "robulk" && (

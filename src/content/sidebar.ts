@@ -304,7 +304,7 @@ export function syncSidebarEntry(doc: Document, logoUrl: string, onOpen: () => v
 }
 
 /** Keeps the entries in place until the returned function is called. `onChange` says whether they're showing. */
-export function watchSidebar(entries: SidebarEntry[], onChange: (shown: boolean) => void): () => void {
+export function watchSidebar(entries: SidebarEntry[], onChange: (shown: boolean) => void = () => {}): () => void {
   let queued = false;
   let shown: boolean | null = null;
   const sync = () => {

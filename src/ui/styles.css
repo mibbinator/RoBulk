@@ -77,21 +77,93 @@
   z-index: 2147483000;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px 10px 14px;
-  border: 0;
+  gap: 10px;
+  padding: 10px 22px 10px 12px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 999px;
   background: var(--rb-primary);
   color: #fff;
   font: inherit;
   font-weight: 600;
+  text-align: left;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(51, 95, 255, 0.35);
+  box-shadow: 0 8px 28px rgba(51, 95, 255, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
   transition: background 0.15s, transform 0.15s;
 }
 .rb-launcher:hover {
   background: var(--rb-primary-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+.rb-launcher:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.rb-launcher-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.rb-launcher-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+.rb-launcher-sub {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* Shown above the launcher when RoBulk is opened outside Creations */
+.rb-launcher-hint {
+  position: fixed;
+  right: 24px;
+  bottom: 96px;
+  z-index: 2147483000;
+  width: min(340px, calc(100vw - 48px));
+  padding: 16px 16px 14px;
+  border: 1px solid var(--rb-border);
+  border-radius: var(--rb-radius);
+  background: var(--rb-surface);
+  box-shadow: var(--rb-shadow);
+  color: var(--rb-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.rb-launcher-hint strong {
+  display: block;
+  padding-right: 24px;
+  font-size: 15px;
+}
+.rb-launcher-hint p {
+  margin: 6px 0 12px;
+  color: var(--rb-muted);
+}
+.rb-launcher-hint-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rb-launcher-hint-close:hover {
+  background: var(--rb-hover);
+}
+.rb-launcher-hint-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.rb-launcher-hint-actions a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 /* Overlay + panel */
